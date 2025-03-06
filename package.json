@@ -1,0 +1,25 @@
+{
+  "name": "safe-multisend-decoder",
+  "version": "1.0.0",
+  "description": "A tool to decode Safe Wallet multisend transactions",
+  "main": "decode.js",
+  "scripts": {
+    "start": "node decode.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "safe",
+    "multisend",
+    "decoder",
+    "ethereum"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^5.7.2"
+  },
+  "bin": {
+    "decode-multisend": "./decode.js"
+  },
+  "packageManager": "pnpm@9.7.0+sha512.dc09430156b427f5ecfc79888899e1c39d2d690f004be70e05230b72cb173d96839587545d09429b55ac3c429c801b4dc3c0e002f653830a420fa2dd4e3cf9cf"
+}
