@@ -29,8 +29,8 @@ The decoder extracts each transaction and provides detailed information about:
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/multisend-decoder.git
-   cd multisend-decoder
+   git clone https://github.com/reown-com/safe-decoder.git
+   cd safe-decoder
    ```
 
 2. Install dependencies:
@@ -40,15 +40,31 @@ The decoder extracts each transaction and provides detailed information about:
 
 ### Option 2: Docker Installation
 
+#### Pull from Docker Repository
+
+The easiest way to get started is to pull the pre-built Docker image:
+
+```bash
+# From Docker Hub
+docker pull reowncom/safe-decoder:latest
+
+# OR from GitHub Container Registry
+docker pull ghcr.io/reown-com/safe-decoder:latest
+```
+
+#### Build Locally
+
+Alternatively, you can build the Docker image locally:
+
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/multisend-decoder.git
-   cd multisend-decoder
+   git clone https://github.com/reown-com/safe-decoder.git
+   cd safe-decoder
    ```
 
 2. Build the Docker image:
    ```bash
-   docker build -t multisend-decoder .
+   docker build -t safe-decoder .
    ```
 
 ## Usage
@@ -71,20 +87,27 @@ node decode.js "0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000
 Run the Docker container with your multisend transaction data:
 
 ```bash
-docker run multisend-decoder "0x<your-multisend-data>"
+# If you pulled from Docker Hub
+docker run reowncom/safe-decoder "0x<your-multisend-data>"
+
+# If you pulled from GitHub Container Registry
+docker run ghcr.io/reown-com/safe-decoder "0x<your-multisend-data>"
+
+# If you built locally
+docker run safe-decoder "0x<your-multisend-data>"
 ```
 
 Example:
 ```bash
-docker run multisend-decoder "0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a100f368f535e329c6d08dff0d4b2da961c4e7f3fcaf00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044097cd2320000000000000000000000000000000000000000000000000000000067bfab00000000000000000000000000000000000000000000000599223bbba52fcbf4a1"
+docker run reowncom/safe-decoder "0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a100f368f535e329c6d08dff0d4b2da961c4e7f3fcaf00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044097cd2320000000000000000000000000000000000000000000000000000000067bfab00000000000000000000000000000000000000000000000599223bbba52fcbf4a1"
 ```
 
 ### Using Docker with a Specific Version
 
-If you've tagged the Docker image with a version:
+If you want to use a specific version:
 
 ```bash
-docker run multisend-decoder:1.0.0 "0x<your-multisend-data>"
+docker run reowncom/safe-decoder:1.0.0 "0x<your-multisend-data>"
 ```
 
 ### Saving Output to a File
@@ -96,7 +119,7 @@ You can save the output to a file using standard output redirection:
 node decode.js "0x<your-multisend-data>" > output.txt
 
 # Using Docker
-docker run multisend-decoder "0x<your-multisend-data>" > output.txt
+docker run reowncom/safe-decoder "0x<your-multisend-data>" > output.txt
 ```
 
 ## Example Output
@@ -131,13 +154,43 @@ The main script is in `decode.js`. If you want to add support for decoding addit
 After making changes to the script, rebuild the Docker image:
 
 ```bash
-docker build -t multisend-decoder:latest .
+docker build -t safe-decoder:latest .
 ```
 
 You can also tag the image with a specific version:
 
 ```bash
-docker tag multisend-decoder:latest multisend-decoder:1.0.1
+docker tag safe-decoder:latest safe-decoder:1.0.1
+```
+
+### Publishing to Docker Repositories
+
+To make the image available to your teammates, you can push it to a Docker repository:
+
+#### Docker Hub
+
+```bash
+# Log in to Docker Hub
+docker login
+
+# Tag the image (if not already done)
+docker tag safe-decoder:latest yourusername/safe-decoder:latest
+
+# Push the image
+docker push yourusername/safe-decoder:latest
+```
+
+#### GitHub Container Registry
+
+```bash
+# Log in to GitHub Container Registry
+echo YOUR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+
+# Tag the image (if not already done)
+docker tag safe-decoder:latest ghcr.io/yourusername/safe-decoder:latest
+
+# Push the image
+docker push ghcr.io/yourusername/safe-decoder:latest
 ```
 
 ## License
