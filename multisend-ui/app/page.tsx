@@ -5,7 +5,7 @@ import MultisendForm from '@/components/MultisendForm';
 import TransactionList from '@/components/TransactionList';
 import JsonDisplay from '@/components/JsonDisplay';
 import TabNavigation from '@/components/TabNavigation';
-import { decodeMultiSendTransactions, DecodedTransaction } from '@/utils/decoder';
+import { decodeTransactionData, DecodedTransaction } from '@/utils/decoder';
 
 export default function Home() {
   const [transactions, setTransactions] = useState<DecodedTransaction[]>([]);
@@ -23,7 +23,7 @@ export default function Home() {
           return;
         } else if (parsedData.data) {
           // If the JSON has a 'data' field that contains the multisend data
-          setTransactions(decodeMultiSendTransactions(parsedData.data));
+          setTransactions(decodeTransactionData(parsedData.data));
           return;
         } else if (parsedData.transactions) {
           // If the JSON has a 'transactions' field
@@ -34,8 +34,8 @@ export default function Home() {
         // Not valid JSON, continue to treat as hex data
       }
       
-      // Treat as raw multisend data
-      setTransactions(decodeMultiSendTransactions(data));
+      // Treat as raw transaction data (multisend or regular function call)
+      setTransactions(decodeTransactionData(data));
     } catch (error) {
       console.error('Error parsing data:', error);
       setTransactions([]);
@@ -45,7 +45,8 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <header className="mb-8 text-center">
-        <h1 className="text-4xl font-bold mt-8 mb-4">SafeWallet Multisend Parser</h1>
+        <h1 className="text-4xl font-bold mt-8 mb-4">Transaction Data Parser</h1>
+        <p className="text-gray-600">Decode SafeWallet multisend and regular function calls</p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -71,7 +72,7 @@ export default function Home() {
               <div className="text-center py-16 text-gray-500">
                 <p>No transactions to preview</p>
                 <p className="mt-4 text-sm">
-                  Paste multisend data and click "Parse Transactions" to preview
+                  Paste transaction data and click "Parse Transactions" to preview
                 </p>
               </div>
             )}

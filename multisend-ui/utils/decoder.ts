@@ -55,6 +55,85 @@ export function decodeMultiSendTransactions(data: string): DecodedTransaction[] 
 }
 
 /**
+ * Decodes a regular function call (non-multisend)
+ * @param data - The hex data from a regular function call
+ * @returns An array with a single decoded transaction
+ */
+export function decodeRegularFunctionCall(data: string): DecodedTransaction[] {
+  // Remove '0x' prefix if present
+  const hexData = data.startsWith('0x') ? data.slice(2) : data;
+  
+  // For a regular function call, we need at least a function selector (4 bytes)
+  if (hexData.length < 8) {
+    throw new Error('Invalid function call data: too short');
+  }
+  
+  // Check if this is a function call to a contract address
+  // Function selector is the first 4 bytes (8 hex chars)
+  const functionSelector = hexData.slice(0, 8);
+  
+  // If the first 4 bytes are a function selector, extract the target address if present
+  // For example, in claim(address), the address would be in the next 32 bytes
+  let to = '0x0000000000000000000000000000000000000000'; // Default zero address
+  
+  // If there are parameters, try to extract them
+  if (hexData.length >= 8 + 64) { // selector + at least one parameter (32 bytes)
+    // For address parameters, they are padded to 32 bytes, with the actual address in the last 20 bytes
+    const addressParam = hexData.slice(8, 8 + 64);
+    // Extract the last 40 chars (20 bytes) which represent the address
+    to = '0x' + addressParam.slice(24);
+  }
+  
+  // Create a transaction object
+  const transaction: DecodedTransaction = {
+    operation: 0, // Regular call
+    to: to,
+    value: '0', // No value transfer in a regular function call
+    dataLength: hexData.length / 2,
+    data: '0x' + hexData
+  };
+  
+  return [transaction];
+}
+
+/**
+ * Attempts to decode transaction data, handling both multisend and regular function calls
+ * @param data - The transaction data to decode
+ * @returns An array of decoded transactions
+ */
+export function decodeTransactionData(data: string): DecodedTransaction[] {
+  // Remove '0x' prefix if present for analysis
+  const hexData = data.startsWith('0x') ? data.slice(2) : data;
+  
+  try {
+    // First try to decode as multisend
+    // In multisend format, the first byte is operation (0 or 1), followed by an address (20 bytes)
+    // We can check if the data follows this pattern
+    
+    // Check if the data is long enough for at least one multisend transaction
+    // (1 byte operation + 20 bytes address + 32 bytes value + 32 bytes dataLength + some data)
+    if (hexData.length >= 2 + 40 + 64 + 64) {
+      // Check if the first byte is a valid operation (0 or 1)
+      const firstByte = parseInt(hexData.slice(0, 2), 16);
+      if (firstByte === 0 || firstByte === 1) {
+        try {
+          return decodeMultiSendTransactions(data);
+        } catch (error) {
+          // If multisend decoding fails, fall back to regular function call
+          console.warn('Failed to decode as multisend, trying as regular function call', error);
+        }
+      }
+    }
+    
+    // If not multisend or multisend decoding failed, try as regular function call
+    return decodeRegularFunctionCall(data);
+  } catch (error) {
+    console.error('Failed to decode transaction data', error);
+    throw new Error('Failed to decode transaction data: ' + (error instanceof Error ? error.message : String(error)));
+  }
+}
+
+/**
  * Gets a human-readable operation name
  * @param operation - The operation code (0 for Call, 1 for DelegateCall)
  * @returns A string representation of the operation
@@ -184,6 +263,28 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
         name: 'transfer(address,uint256)',
         params: {},
         error: 'Failed to decode transfer function parameters'
+      };
+    }
+  }
+  
+  // claim function (0x1e83409a)
+  if (functionSignature === '0x1e83409a') {
+    try {
+      const iface = new ethers.utils.Interface([
+        'function claim(address account) external'
+      ]);
+      const decoded = iface.decodeFunctionData('claim', data);
+      return {
+        name: 'claim(address)',
+        params: {
+          account: decoded.account || decoded[0]
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'claim(address)',
+        params: {},
+        error: 'Failed to decode claim function parameters'
       };
     }
   }

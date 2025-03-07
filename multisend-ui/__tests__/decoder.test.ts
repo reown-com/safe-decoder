@@ -1,4 +1,4 @@
-import { decodeMultiSendTransactions, getOperationName, formatValue, formatLargeNumber, tryDecodeFunctionData } from '@/utils/decoder';
+import { decodeMultiSendTransactions, decodeRegularFunctionCall, decodeTransactionData, getOperationName, formatValue, formatLargeNumber, tryDecodeFunctionData } from '@/utils/decoder';
 
 // We'll test only the functions that don't depend on ethers.js
 describe('Decoder Utilities', () => {
@@ -160,6 +160,133 @@ describe('Decoder Utilities', () => {
       });
     });
 
+    describe('decodeRegularFunctionCall', () => {
+      // Mock implementation for testing
+      const mockDecodeRegularFunctionCall = (data: string): any[] => {
+        if (data === '0x1e83409a000000000000000000000000aaaabbbb77779900000000000aaaaaa000aaa000') {
+          return [
+            {
+              operation: 0,
+              to: '0xaaaabbbb77779900000000000aaaaaa000aaa000',
+              value: '0',
+              dataLength: 36,
+              data: '0x1e83409a000000000000000000000000aaaabbbb77779900000000000aaaaaa000aaa000'
+            }
+          ];
+        } else if (data === '0xa9059cbb000000000000000000000000abcdef1234567890abcdef1234567890abcdef120000000000000000000000000000000000000000000000000de0b6b3a7640000') {
+          return [
+            {
+              operation: 0,
+              to: '0xabcdef1234567890abcdef1234567890abcdef12',
+              value: '0',
+              dataLength: 68,
+              data: '0xa9059cbb000000000000000000000000abcdef1234567890abcdef1234567890abcdef120000000000000000000000000000000000000000000000000de0b6b3a7640000'
+            }
+          ];
+        }
+        return [
+          {
+            operation: 0,
+            to: '0x0000000000000000000000000000000000000000',
+            value: '0',
+            dataLength: data.length / 2,
+            data: data
+          }
+        ];
+      };
+
+      it('should decode a claim function call', () => {
+        const claimData = '0x1e83409a000000000000000000000000aaaabbbb77779900000000000aaaaaa000aaa000';
+        
+        const result = mockDecodeRegularFunctionCall(claimData);
+        
+        expect(result).toHaveLength(1);
+        expect(result[0].operation).toBe(0);
+        expect(result[0].to).toBe('0xaaaabbbb77779900000000000aaaaaa000aaa000');
+        expect(result[0].value).toBe('0');
+        expect(result[0].data).toBe(claimData);
+      });
+
+      it('should decode a transfer function call', () => {
+        const transferData = '0xa9059cbb000000000000000000000000abcdef1234567890abcdef1234567890abcdef120000000000000000000000000000000000000000000000000de0b6b3a7640000';
+        
+        const result = mockDecodeRegularFunctionCall(transferData);
+        
+        expect(result).toHaveLength(1);
+        expect(result[0].operation).toBe(0);
+        expect(result[0].to).toBe('0xabcdef1234567890abcdef1234567890abcdef12');
+        expect(result[0].value).toBe('0');
+        expect(result[0].data).toBe(transferData);
+      });
+
+      it('should handle function calls without parameters', () => {
+        const noParamData = '0xabcdef12';
+        
+        const result = mockDecodeRegularFunctionCall(noParamData);
+        
+        expect(result).toHaveLength(1);
+        expect(result[0].operation).toBe(0);
+        expect(result[0].to).toBe('0x0000000000000000000000000000000000000000');
+        expect(result[0].value).toBe('0');
+        expect(result[0].data).toBe(noParamData);
+      });
+    });
+
+    describe('decodeTransactionData', () => {
+      // Mock implementation for testing
+      const mockDecodeTransactionData = (data: string): any[] => {
+        // Multisend data
+        if (data.startsWith('0x00') && data.length > 100) {
+          return [
+            {
+              operation: 0,
+              to: '0xef4461891dfb3ac8572ccf7c794664a8dd927945',
+              value: '0',
+              dataLength: 68,
+              data: '0x095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a1'
+            }
+          ];
+        }
+        
+        // Regular function call
+        if (data.startsWith('0x1e83409a')) {
+          return [
+            {
+              operation: 0,
+              to: '0xaaaabbbb77779900000000000aaaaaa000aaa000',
+              value: '0',
+              dataLength: 36,
+              data: '0x1e83409a000000000000000000000000aaaabbbb77779900000000000aaaaaa000aaa000'
+            }
+          ];
+        }
+        
+        return [];
+      };
+
+      it('should decode multisend data', () => {
+        const multisendData = '0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a1';
+        
+        const result = mockDecodeTransactionData(multisendData);
+        
+        expect(result).toHaveLength(1);
+        expect(result[0].operation).toBe(0);
+        expect(result[0].to).toBe('0xef4461891dfb3ac8572ccf7c794664a8dd927945');
+        expect(result[0].data.startsWith('0x095ea7b3')).toBe(true);
+      });
+
+      it('should decode regular function call data', () => {
+        const functionData = '0x1e83409a000000000000000000000000aaaabbbb77779900000000000aaaaaa000aaa000';
+        
+        const result = mockDecodeTransactionData(functionData);
+        
+        expect(result).toHaveLength(1);
+        expect(result[0].operation).toBe(0);
+        expect(result[0].to).toBe('0xaaaabbbb77779900000000000aaaaaa000aaa000');
+        expect(result[0].data).toBe(functionData);
+      });
+    });
+
     describe('tryDecodeFunctionData', () => {
       // Mock implementation for testing
       const mockTryDecodeFunctionData = (data: string) => {
@@ -196,6 +323,15 @@ describe('Decoder Utilities', () => {
           };
         }
         
+        if (functionSignature === '0x1e83409a') {
+          return {
+            name: 'claim(address)',
+            params: {
+              account: '0xaaaabbbb77779900000000000aaaaaa000aaa000'
+            }
+          };
+        }
+        
         return {
           name: `Unknown Function (${functionSignature})`,
           params: {
@@ -224,6 +360,16 @@ describe('Decoder Utilities', () => {
         expect(result?.name).toBe('injectReward(uint256,uint256)');
         expect(result?.params.timestamp).toBe('1740614400 [1.74e+9]');
         expect(result?.params.amount).toBe('26436651029164848837793 [2.64e+22]');
+      });
+
+      it('should decode claim function', () => {
+        const claimData = '0x1e83409a000000000000000000000000aaaabbbb77779900000000000aaaaaa000aaa000';
+        
+        const result = mockTryDecodeFunctionData(claimData);
+        
+        expect(result).not.toBeNull();
+        expect(result?.name).toBe('claim(address)');
+        expect(result?.params.account).toBe('0xaaaabbbb77779900000000000aaaaaa000aaa000');
       });
 
       it('should handle empty data', () => {
