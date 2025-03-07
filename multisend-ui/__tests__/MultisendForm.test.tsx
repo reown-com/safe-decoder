@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import MultisendForm from '@/components/MultisendForm';
 
@@ -139,5 +139,35 @@ describe('MultisendForm', () => {
     
     // Verify error is cleared
     expect(screen.queryByText('Invalid hex format. Please enter valid transaction data')).not.toBeInTheDocument();
+  });
+
+  it('updates input and calls onParse when inputData prop changes', () => {
+    const { rerender } = render(<MultisendForm onParse={mockOnParse} />);
+    
+    // Initially, the textarea should be empty
+    const textarea = screen.getByPlaceholderText(/Paste transaction data here/) as HTMLTextAreaElement;
+    expect(textarea).toHaveValue('');
+    
+    // Update the component with inputData
+    const validHex = '0x00ef4461891dfb3ac8572ccf7c794664a8dd927945';
+    
+    act(() => {
+      rerender(<MultisendForm onParse={mockOnParse} inputData={validHex} />);
+    });
+    
+    // Check that the textarea now contains the inputData
+    expect(textarea).toHaveValue(validHex);
+    
+    // Verify that onParse is called automatically with the inputData
+    expect(mockOnParse).toHaveBeenCalledWith(validHex);
+  });
+
+  it('accepts a ref', () => {
+    const ref = React.createRef<HTMLFormElement>();
+    render(<MultisendForm onParse={mockOnParse} ref={ref} />);
+    
+    // Check that the ref is attached to the form element
+    expect(ref.current).not.toBeNull();
+    expect(ref.current?.tagName).toBe('FORM');
   });
 }); 

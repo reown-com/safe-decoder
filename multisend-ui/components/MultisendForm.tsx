@@ -1,12 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, forwardRef } from 'react';
 
 interface MultisendFormProps {
   onParse: (data: string) => void;
+  inputData?: string;
 }
 
-const MultisendForm: React.FC<MultisendFormProps> = ({ onParse }) => {
+const MultisendForm = forwardRef<HTMLFormElement, MultisendFormProps>(({ onParse, inputData }, ref) => {
   const [input, setInput] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+
+  // Update input when inputData prop changes
+  useEffect(() => {
+    if (inputData) {
+      setInput(inputData);
+      // Automatically submit the form when data is received from screenshot
+      if (inputData.trim()) {
+        onParse(inputData);
+      }
+    }
+  }, [inputData, onParse]);
 
   // Sample multisend data for the example
   const sampleMultisendData = '0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a100f368f535e329c6d08dff0d4b2da961c4e7f3fcaf00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044097cd2320000000000000000000000000000000000000000000000000000000067bfab00000000000000000000000000000000000000000000000599223bbba52fcbf4a1';
@@ -56,7 +68,7 @@ const MultisendForm: React.FC<MultisendFormProps> = ({ onParse }) => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} ref={ref}>
         <div className="mb-4">
           <textarea
             className="w-full h-64 p-3 border rounded-md font-mono text-sm"
@@ -94,6 +106,8 @@ const MultisendForm: React.FC<MultisendFormProps> = ({ onParse }) => {
       </form>
     </div>
   );
-};
+});
+
+MultisendForm.displayName = 'MultisendForm';
 
 export default MultisendForm; 
