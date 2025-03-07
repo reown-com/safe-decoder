@@ -2,9 +2,11 @@
   "name": "safe-multisend-decoder",
   "version": "1.0.0",
   "description": "A tool to decode Safe Wallet multisend transactions",
-  "main": "decode.js",
+  "main": "dist/decode.js",
   "scripts": {
-    "start": "node decode.js",
+    "start": "node dist/decode.js",
+    "build": "tsc",
+    "dev": "ts-node decode.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -18,8 +20,13 @@
   "dependencies": {
     "ethers": "^5.7.2"
   },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
   "bin": {
-    "decode-multisend": "./decode.js"
+    "decode-multisend": "./dist/decode.js"
   },
   "packageManager": "pnpm@9.7.0+sha512.dc09430156b427f5ecfc79888899e1c39d2d690f004be70e05230b72cb173d96839587545d09429b55ac3c429c801b4dc3c0e002f653830a420fa2dd4e3cf9cf"
 }

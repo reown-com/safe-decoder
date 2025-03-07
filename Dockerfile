@@ -4,15 +4,20 @@ WORKDIR /app
 
 # Copy package.json and package-lock.json
 COPY package*.json ./
+COPY pnpm-lock.yaml ./
 
 # Install dependencies
-RUN npm install
+RUN npm install -g pnpm && pnpm install
 
-# Copy the script
-COPY decode.js ./
+# Copy the TypeScript configuration and source files
+COPY tsconfig.json ./
+COPY decode.ts ./
+
+# Build the TypeScript code
+RUN pnpm build
 
 # Make the script executable
-RUN chmod +x decode.js
+RUN chmod +x dist/decode.js
 
 # Set the entrypoint
-ENTRYPOINT ["node", "decode.js"] 
+ENTRYPOINT ["node", "dist/decode.js"] 

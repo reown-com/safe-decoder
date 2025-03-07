@@ -22,7 +22,7 @@ The decoder extracts each transaction and provides detailed information about:
 ### Prerequisites
 
 - Node.js (v14 or higher)
-- npm (v6 or higher)
+- npm (v6 or higher) or pnpm (v7 or higher)
 - Docker (optional, for containerized usage)
 
 ### Option 1: Local Installation
@@ -36,6 +36,15 @@ The decoder extracts each transaction and provides detailed information about:
 2. Install dependencies:
    ```bash
    npm install
+   # or using pnpm
+   pnpm install
+   ```
+
+3. Build the TypeScript code (if using TypeScript version):
+   ```bash
+   npm run build
+   # or using pnpm
+   pnpm build
    ```
 
 ### Option 2: Docker Installation
@@ -73,13 +82,25 @@ Alternatively, you can build the Docker image locally:
 
 Run the script with your multisend transaction data:
 
+#### JavaScript Version
 ```bash
 node decode.js "0x<your-multisend-data>"
 ```
 
+#### TypeScript Version
+```bash
+# Run the compiled JavaScript
+node dist/decode.js "0x<your-multisend-data>"
+
+# Or run directly with ts-node
+npx ts-node decode.ts "0x<your-multisend-data>"
+# or using pnpm
+pnpm dev "0x<your-multisend-data>"
+```
+
 Example:
 ```bash
-node decode.js "0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a100f368f535e329c6d08dff0d4b2da961c4e7f3fcaf00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044097cd2320000000000000000000000000000000000000000000000000000000067bfab00000000000000000000000000000000000000000000000599223bbba52fcbf4a1"
+node dist/decode.js "0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a100f368f535e329c6d08dff0d4b2da961c4e7f3fcaf00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044097cd2320000000000000000000000000000000000000000000000000000000067bfab00000000000000000000000000000000000000000000000599223bbba52fcbf4a1"
 ```
 
 ### Using Docker
@@ -116,7 +137,7 @@ You can save the output to a file using standard output redirection:
 
 ```bash
 # Using Node.js
-node decode.js "0x<your-multisend-data>" > output.txt
+node dist/decode.js "0x<your-multisend-data>" > output.txt
 
 # Using Docker
 docker run reowncom/safe-decoder "0x<your-multisend-data>" > output.txt
@@ -145,9 +166,29 @@ Contract: 0xf368f535e329c6d08dff0d4b2da961c4e7f3fcaf
 
 ## Development
 
-### Modifying the Script
+### TypeScript Version
 
-The main script is in `decode.js`. If you want to add support for decoding additional transaction types or enhance the output format, modify this file.
+The project has been migrated to TypeScript for improved type safety and developer experience. The TypeScript source code is in `decode.ts`.
+
+#### Building the TypeScript Code
+
+To compile the TypeScript code to JavaScript:
+
+```bash
+npm run build
+# or using pnpm
+pnpm build
+```
+
+This will generate the compiled JavaScript files in the `dist` directory.
+
+#### Modifying the TypeScript Script
+
+The main TypeScript script is in `decode.ts`. If you want to add support for decoding additional transaction types or enhance the output format, modify this file and then rebuild.
+
+### JavaScript Version
+
+The original JavaScript version is still available in `decode.js` for backward compatibility.
 
 ### Building a New Docker Image
 
@@ -199,4 +240,4 @@ docker push ghcr.io/yourusername/safe-decoder:latest
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. 
+Contributions are welcome! Please feel free to submit a Pull Request.
