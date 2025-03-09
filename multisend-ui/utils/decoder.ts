@@ -289,6 +289,34 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
     }
   }
   
+  // swapOwner function (0xe318b52b)
+  if (functionSignature === '0xe318b52b') {
+    try {
+      // Extract parameters from the data (remove function signature)
+      const params = data.slice(10);
+      
+      // Each address parameter is 32 bytes (64 hex chars)
+      const prevOwner = '0x' + params.slice(24, 64); // Extract the last 20 bytes of the first parameter
+      const oldOwner = '0x' + params.slice(64 + 24, 64 + 64); // Extract the last 20 bytes of the second parameter
+      const newOwner = '0x' + params.slice(128 + 24, 128 + 64); // Extract the last 20 bytes of the third parameter
+      
+      return {
+        name: 'swapOwner(address,address,address)',
+        params: {
+          prevOwner: prevOwner,
+          oldOwner: oldOwner,
+          newOwner: newOwner
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'swapOwner(address,address,address)',
+        params: {},
+        error: 'Failed to decode swapOwner function parameters'
+      };
+    }
+  }
+  
   // If we can't decode the function, return the function signature
   return {
     name: `Unknown Function (${functionSignature})`,

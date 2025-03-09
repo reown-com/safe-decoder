@@ -1,6 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
 
+/**
+ * Ensures a hex string has an even number of characters (excluding the 0x prefix)
+ * @param hexString The hex string to normalize
+ * @returns A normalized hex string with even length
+ */
+function normalizeHexString(hexString: string): string {
+  if (!hexString || typeof hexString !== 'string') return hexString;
+  if (!hexString.startsWith('0x')) return hexString;
+  
+  // Remove 0x prefix
+  const withoutPrefix = hexString.slice(2);
+  
+  // If the length is odd, add a leading zero
+  const normalized = withoutPrefix.length % 2 !== 0 ? `0${withoutPrefix}` : withoutPrefix;
+  
+  // Add the 0x prefix back
+  return `0x${normalized}`;
+}
+
+/**
+ * Normalizes hex strings in an object
+ * @param obj The object to normalize
+ * @returns A new object with normalized hex strings
+ */
+function normalizeHexFields(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  
+  const result: any = {};
+  
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string' && value.startsWith('0x')) {
+      result[key] = normalizeHexString(value);
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = normalizeHexFields(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  
+  return result;
+}
+
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -43,6 +85,8 @@ export async function POST(request: NextRequest) {
             content: `You are a helpful assistant that extracts JSON data from images. 
             The image may contain partial or malformatted JSON. 
             Your task is to find and fix any JSON in the image and extract the following fields if present:
+            - safeAddressInput (any Safe address or URL)
+            - address (Ethereum address)
             - to
             - value
             - data
@@ -58,7 +102,10 @@ export async function POST(request: NextRequest) {
             Do not include any explanations or additional text in your response, just the JSON object.
             
             If you see transaction data that appears to be a multisend transaction or function call data (starting with 0x),
-            include it in the "data" field of your response.`
+            include it in the "data" field of your response.
+            
+            If you see a Safe address in any format (like eth:0x1234... or https://app.safe.global/home?safe=eth:0x1234...),
+            include it in the "safeAddressInput" field.`
           },
           {
             role: "user",
@@ -86,12 +133,16 @@ export async function POST(request: NextRequest) {
       let extractedData;
       try {
         extractedData = JSON.parse(aiResponse);
+        // Normalize hex fields
+        extractedData = normalizeHexFields(extractedData);
       } catch (error) {
         // If parsing fails, try to extract JSON using regex
         const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
             extractedData = JSON.parse(jsonMatch[0]);
+            // Normalize hex fields
+            extractedData = normalizeHexFields(extractedData);
           } catch (e) {
             extractedData = { error: "Failed to parse JSON from AI response" };
           }

@@ -5,14 +5,15 @@ import MultisendForm from '@/components/MultisendForm';
 import TransactionList from '@/components/TransactionList';
 import JsonDisplay from '@/components/JsonDisplay';
 import TabNavigation from '@/components/TabNavigation';
+import ImageUpload from '@/components/ImageUpload';
 import { decodeTransactionData, DecodedTransaction } from '@/utils/decoder';
+import Link from 'next/link';
 
 export default function Home() {
   const [transactions, setTransactions] = useState<DecodedTransaction[]>([]);
   const [activeTab, setActiveTab] = useState<string>('list');
   const [isLoading, setIsLoading] = useState(false);
   const [inputData, setInputData] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const handleParse = (data: string) => {
@@ -46,51 +47,21 @@ export default function Home() {
     }
   };
 
-  const handleFileUpload = () => {
-    // Trigger the file input click
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsLoading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const response = await fetch('/api/extract-json', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await response.json();
+  const handleImageProcessed = (data: any) => {
+    setIsLoading(false);
+    
+    // If the data contains the 'data' field, use it
+    if (data.data) {
+      // Update the input data in the MultisendForm
+      setInputData(data.data);
       
-      if (response.ok) {
-        // If the data contains the 'data' field, use it
-        if (data.data) {
-          // Update the input data in the MultisendForm
-          setInputData(data.data);
-          
-          // Parse the data
-          handleParse(data.data);
-        } else {
-          // Otherwise, stringify the entire JSON and use it
-          const jsonString = JSON.stringify(data, null, 2);
-          setInputData(jsonString);
-          handleParse(jsonString);
-        }
-      } else {
-        console.error('Error extracting JSON:', data.error);
-      }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-    } finally {
-      setIsLoading(false);
+      // Parse the data
+      handleParse(data.data);
+    } else {
+      // Otherwise, stringify the entire JSON and use it
+      const jsonString = JSON.stringify(data, null, 2);
+      setInputData(jsonString);
+      handleParse(jsonString);
     }
   };
 
@@ -100,23 +71,19 @@ export default function Home() {
         <h1 className="text-4xl font-bold mt-8 mb-4">Transaction Data Parser</h1>
         <p className="text-gray-600">Decode SafeWallet multisend and regular function calls</p>
         <div className="mt-4 flex justify-center space-x-4">
-          {/* Hidden file input */}
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            accept="image/*" 
-            className="hidden" 
+          <ImageUpload 
+            onImageProcessed={handleImageProcessed}
+            isLoading={isLoading}
+            buttonText="Extract JSON from Screenshot"
           />
-          
-          {/* Button to trigger file selection */}
-          <button 
-            onClick={handleFileUpload}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            disabled={isLoading}
+
+          {/* Link to checksums page */}
+          <Link 
+            href="/checksums" 
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >
-            {isLoading ? 'Processing...' : 'Extract JSON from Screenshot'}
-          </button>
+            Calculate Transaction Hashes
+          </Link>
         </div>
       </header>
 

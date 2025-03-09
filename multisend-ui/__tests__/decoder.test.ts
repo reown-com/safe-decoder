@@ -387,6 +387,19 @@ describe('Decoder Utilities', () => {
         expect(result?.name).toBe('Unknown Function (0xabcdef1234)');
         expect(result?.params.rawData).toBe(unknownData);
       });
+
+      it('should decode swapOwner function data correctly', () => {
+        const data = '0xe318b52b000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000d92c8e1f1d228c709e16fd9f49ed0d53b49b6dfa000000000000000000000000000053f0392a4e62d4f5285ab1fb65133cff6a3fddd6';
+        const result = tryDecodeFunctionData(data);
+        
+        expect(result).not.toBeNull();
+        expect(result?.name).toBe('swapOwner(address,address,address)');
+        expect(result?.params).toEqual({
+          prevOwner: '0x0000000000000000000000000000000000000000',
+          oldOwner: '0x00000000000000000000000000000000d92c8e1f',
+          newOwner: '0xb49b6dfa000000000000000000000000000053f0'
+        });
+      });
     });
   });
 }); 
