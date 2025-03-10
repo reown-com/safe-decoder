@@ -247,15 +247,23 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
   // ERC20 transfer function (0xa9059cbb)
   if (functionSignature === '0xa9059cbb') {
     try {
-      const iface = new ethers.utils.Interface([
-        'function transfer(address recipient, uint256 amount) external returns (bool)'
-      ]);
-      const decoded = iface.decodeFunctionData('transfer', data);
+      // Extract parameters from the data (remove function signature)
+      const params = data.slice(10);
+      
+      // Each parameter is 32 bytes (64 hex chars)
+      // For address, we need to extract the last 20 bytes (40 hex chars)
+      const recipientPadded = params.slice(0, 64);
+      const recipient = '0x' + recipientPadded.slice(24); // Extract the last 20 bytes
+      
+      // Amount is the next 32 bytes
+      const amountHex = params.slice(64, 128);
+      const amount = ethers.BigNumber.from('0x' + amountHex).toString();
+      
       return {
         name: 'transfer(address,uint256)',
         params: {
-          recipient: decoded.recipient || decoded[0],
-          amount: (decoded.amount || decoded[1]).toString()
+          recipient: recipient,
+          amount: amount
         }
       };
     } catch (error) {

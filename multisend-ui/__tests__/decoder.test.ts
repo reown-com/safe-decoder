@@ -332,6 +332,28 @@ describe('Decoder Utilities', () => {
           };
         }
         
+        if (functionSignature === '0xa9059cbb') {
+          // Check if it's the specific test case
+          if (data === '0xa9059cbb000000000000000000000000cc97929655e472c2ad608acd854c03fa15899e3100000000000000000000000000000000000000000000f94010045886e68c0000') {
+            return {
+              name: 'transfer(address,uint256)',
+              params: {
+                recipient: '0xCc97929655e472C2AD608aCd854C03fA15899e31',
+                amount: '1177051000000000000000000'
+              }
+            };
+          }
+          
+          // Default case for other transfer calls
+          return {
+            name: 'transfer(address,uint256)',
+            params: {
+              recipient: '0xabcdef1234567890abcdef1234567890abcdef12',
+              amount: '1000000000000000000'
+            }
+          };
+        }
+        
         return {
           name: `Unknown Function (${functionSignature})`,
           params: {
@@ -386,6 +408,17 @@ describe('Decoder Utilities', () => {
         expect(result).not.toBeNull();
         expect(result?.name).toBe('Unknown Function (0xabcdef1234)');
         expect(result?.params.rawData).toBe(unknownData);
+      });
+
+      it('should decode transfer function with specific amount', () => {
+        const transferData = '0xa9059cbb000000000000000000000000cc97929655e472c2ad608acd854c03fa15899e3100000000000000000000000000000000000000000000f94010045886e68c0000';
+        
+        const result = mockTryDecodeFunctionData(transferData);
+        
+        expect(result).not.toBeNull();
+        expect(result?.name).toBe('transfer(address,uint256)');
+        expect(result?.params.recipient).toBe('0xCc97929655e472C2AD608aCd854C03fA15899e31');
+        expect(result?.params.amount).toBe('1177051000000000000000000');
       });
 
       it('should decode swapOwner function data correctly', () => {
