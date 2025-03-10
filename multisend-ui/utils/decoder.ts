@@ -191,6 +191,24 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
   // Get the function signature (first 4 bytes / 8 hex chars after 0x)
   const functionSignature = data.slice(0, 10);
   
+  // MultiSend function (0x8d80ff0a)
+  if (functionSignature === '0x8d80ff0a') {
+    try {
+      return {
+        name: 'multiSend(bytes)',
+        params: {
+          transactions: data.slice(10)
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'multiSend(bytes)',
+        params: {},
+        error: 'Failed to decode multiSend function parameters'
+      };
+    }
+  }
+  
   // ERC20 approve function (0x095ea7b3)
   if (functionSignature === '0x095ea7b3') {
     try {
