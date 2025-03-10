@@ -194,10 +194,39 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
   // MultiSend function (0x8d80ff0a)
   if (functionSignature === '0x8d80ff0a') {
     try {
+      // The multiSend function has a bytes parameter that is ABI-encoded
+      // The format is: 0x8d80ff0a + [32 bytes offset] + [32 bytes length] + [actual data]
+      
+      // Skip function signature (4 bytes) and get the data part
+      const abiEncodedData = data.slice(10);
+      
+      // In ABI encoding, the first 32 bytes (64 hex chars) is the offset to the data
+      // The next 32 bytes is the length of the data
+      // Then comes the actual data
+      
+      // Skip the offset (32 bytes)
+      const dataWithLength = abiEncodedData.slice(64);
+      
+      // Get the length from the next 32 bytes
+      const lengthHex = dataWithLength.slice(0, 64);
+      const length = parseInt(lengthHex, 16) * 2; // Convert to bytes then to hex chars (×2)
+      
+      // Get the actual transaction data
+      const transactionsData = dataWithLength.slice(64, 64 + length);
+      
+      // Try to decode the transactions
+      let decodedTransactions: DecodedTransaction[] = [];
+      try {
+        decodedTransactions = decodeMultiSendTransactions('0x' + transactionsData);
+      } catch (error) {
+        console.error('Failed to decode multiSend transactions:', error);
+      }
+      
       return {
         name: 'multiSend(bytes)',
         params: {
-          transactions: data.slice(10)
+          transactions: transactionsData,
+          decodedTransactionsCount: decodedTransactions.length.toString()
         }
       };
     } catch (error) {
@@ -350,4 +379,98 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       rawData: data
     }
   };
+}
+
+/**
+ * Parses a JSON string containing "Sign Typed Data" content
+ * @param jsonString - The JSON string to parse
+ * @returns An object with the transaction details extracted from the JSON
+ * 
+ * This function handles multiSend function data in the following way:
+ * 1. It checks if the data starts with the multiSend function signature (0x8d80ff0a)
+ * 2. If it does, it decodes the function parameters using tryDecodeFunctionData
+ * 3. It then extracts the transactions from the ABI-encoded parameters
+ * 4. Finally, it decodes the transactions using decodeMultiSendTransactions
+ */
+export function parseSignTypedDataJson(jsonString: string): { 
+  to: string; 
+  value: string; 
+  data: string; 
+  operation: string; 
+  safeTxGas: string; 
+  baseGas: string; 
+  gasPrice: string; 
+  gasToken: string; 
+  refundReceiver: string; 
+  nonce: string;
+  decodedData: { name: string; params: Record<string, string>; error?: string } | null;
+  decodedTransactions: DecodedTransaction[] | null;
+} | null {
+  try {
+    // Parse the JSON string
+    const parsedData = JSON.parse(jsonString);
+    
+    // Validate that the required fields are present
+    if (!parsedData.to || !parsedData.data) {
+      console.error('Invalid JSON format: missing required fields');
+      return null;
+    }
+    
+    // Extract the transaction details
+    const result = {
+      to: parsedData.to,
+      value: parsedData.value || '0',
+      data: parsedData.data,
+      operation: parsedData.operation || '0',
+      safeTxGas: parsedData.safeTxGas || '0',
+      baseGas: parsedData.baseGas || '0',
+      gasPrice: parsedData.gasPrice || '0',
+      gasToken: parsedData.gasToken || '0x0000000000000000000000000000000000000000',
+      refundReceiver: parsedData.refundReceiver || '0x0000000000000000000000000000000000000000',
+      nonce: parsedData.nonce || '0',
+      decodedData: null as { name: string; params: Record<string, string>; error?: string } | null,
+      decodedTransactions: null as DecodedTransaction[] | null
+    };
+    
+    // Try to decode the data
+    if (result.data && result.data !== '0x') {
+      const normalizedData = result.data.startsWith('0x') ? result.data : `0x${result.data}`;
+      
+      // Check if this is a multiSend function call
+      if (normalizedData.startsWith('0x8d80ff0a')) {
+        // This is a multiSend function call
+        result.decodedData = tryDecodeFunctionData(normalizedData);
+        
+        // If we have decoded the multiSend function, try to extract the transactions
+        if (result.decodedData && result.decodedData.params.transactions) {
+          try {
+            // Extract the transactions from the multiSend data
+            const transactionsData = '0x' + result.decodedData.params.transactions;
+            result.decodedTransactions = decodeMultiSendTransactions(transactionsData);
+          } catch (error) {
+            console.error('Failed to decode multiSend transactions:', error);
+          }
+        }
+      } else {
+        // Not a multiSend function call, try normal decoding
+        try {
+          const transactions = decodeTransactionData(normalizedData);
+          if (transactions.length > 1) {
+            // It's a multisend transaction
+            result.decodedTransactions = transactions;
+          } else {
+            // Try to decode as a regular function call
+            result.decodedData = tryDecodeFunctionData(normalizedData);
+          }
+        } catch (error) {
+          console.error('Error decoding data:', error);
+        }
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error parsing JSON:', error);
+    return null;
+  }
 } 

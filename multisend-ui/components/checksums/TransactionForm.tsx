@@ -5,7 +5,12 @@ import { UseFormReturn } from 'react-hook-form';
 import { FormData } from '@/types/checksums';
 import { NETWORKS } from '@/utils/checksums/constants';
 import ImageUpload from '@/components/ImageUpload';
-import { tryDecodeFunctionData, decodeTransactionData, DecodedTransaction } from '@/utils/decoder';
+import { 
+  tryDecodeFunctionData, 
+  decodeTransactionData, 
+  DecodedTransaction,
+  parseSignTypedDataJson
+} from '@/utils/decoder';
 
 /**
  * Ensures a hex string has an even number of characters (excluding the 0x prefix)
@@ -88,7 +93,24 @@ export default function TransactionForm({
   const [imageLoading, setImageLoading] = useState(false);
   const [decodedData, setDecodedData] = useState<{ name: string; params: Record<string, string>; error?: string } | null>(null);
   const [decodedTransactions, setDecodedTransactions] = useState<DecodedTransactionWithFunction[] | null>(null);
+  const [jsonInput, setJsonInput] = useState<string>('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [showJsonInput, setShowJsonInput] = useState<boolean>(false);
   
+  // Sample JSON for the "Load Sample" button
+  const sampleJson = `{
+  "to": "0xa1dabef33b3b82c7814b6d82a79e50f4ac44102b",
+  "value": "0",
+  "data": "0x8d80ff0a0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000026400ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044a9059cbb0000000000000000000000001c44478a9a1c60b4f555aaabc9c510eaf3927071000000000000000000000000000000000000000000000000016345785d8a000000ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044a9059cbb000000000000000000000000fcffb73c67382ef6f5d5d3ea3d6118020ffc71ae000000000000000000000000000000000000000000000000016345785d8a0000",
+  "operation": "1",
+  "safeTxGas": "0",
+  "baseGas": "0",
+  "gasPrice": "0",
+  "gasToken": "0x0000000000000000000000000000000000000000",
+  "refundReceiver": "0x0000000000000000000000000000000000000000",
+  "nonce": "93"
+}`;
+
   // Watch for changes to the data field
   React.useEffect(() => {
     const subscription = form.watch((value, { name }) => {
@@ -252,6 +274,69 @@ export default function TransactionForm({
     }
   };
 
+  const handleJsonInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setJsonInput(e.target.value);
+  };
+
+  const handleParseJson = () => {
+    if (!jsonInput.trim()) {
+      setJsonError('Please enter JSON data');
+      return;
+    }
+
+    try {
+      // Parse the JSON content
+      const parsedData = parseSignTypedDataJson(jsonInput);
+      
+      if (!parsedData) {
+        setJsonError('Failed to parse JSON content. Make sure it contains valid transaction data.');
+        return;
+      }
+      
+      // Update form fields with the parsed data
+      form.setValue('to', parsedData.to);
+      form.setValue('value', parsedData.value);
+      form.setValue('data', parsedData.data);
+      form.setValue('operation', parsedData.operation);
+      form.setValue('safeTxGas', parsedData.safeTxGas);
+      form.setValue('baseGas', parsedData.baseGas);
+      form.setValue('gasPrice', parsedData.gasPrice);
+      form.setValue('gasToken', parsedData.gasToken);
+      form.setValue('refundReceiver', parsedData.refundReceiver);
+      form.setValue('nonce', parsedData.nonce);
+      
+      // Update decoded data state
+      if (parsedData.decodedTransactions && parsedData.decodedTransactions.length > 0) {
+        setDecodedTransactions(decodeTransactionsRecursively(parsedData.decodedTransactions));
+        setDecodedData(parsedData.decodedData); // Keep the function data for reference
+      } else if (parsedData.decodedData) {
+        setDecodedData(parsedData.decodedData);
+        setDecodedTransactions(null);
+      }
+      
+      setJsonError(null);
+      setShowJsonInput(false); // Hide the JSON input after successful parsing
+    } catch (error) {
+      console.error('Error parsing JSON:', error);
+      setJsonError('Failed to parse JSON content. Please check the format and try again.');
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      setJsonInput(clipboardText);
+    } catch (error) {
+      console.error('Failed to read from clipboard:', error);
+      setJsonError('Failed to read from clipboard. Please paste the content manually.');
+    }
+  };
+
+  const handleLoadSampleJson = () => {
+    setJsonInput(sampleJson);
+    setJsonError(null);
+  };
+
   /**
    * Renders a decoded function
    */
@@ -355,6 +440,77 @@ export default function TransactionForm({
             className="text-xs py-1 px-2"
           />
         </div>
+      </div>
+
+      {/* Sign Typed Data JSON Input */}
+      <div className="mb-6 border-t pt-4">
+        <h3 className="text-lg font-medium mb-2">Sign Typed Data JSON</h3>
+        <p className="text-sm text-gray-600 mb-2">
+          Paste JSON content from a Sign Typed Data transaction to populate the form fields.
+        </p>
+        
+        <div className="flex space-x-2 mb-2">
+          <button
+            type="button"
+            onClick={() => setShowJsonInput(!showJsonInput)}
+            className="text-sm py-1 px-3 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            {showJsonInput ? 'Hide JSON Input' : 'Show JSON Input'}
+          </button>
+          
+          {showJsonInput && (
+            <>
+              <button
+                type="button"
+                onClick={handlePasteFromClipboard}
+                className="text-sm py-1 px-3 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+              >
+                Paste from Clipboard
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadSampleJson}
+                className="text-sm py-1 px-3 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+              >
+                Load Sample JSON
+              </button>
+            </>
+          )}
+        </div>
+        
+        {showJsonInput && (
+          <div className="space-y-2">
+            <textarea
+              className="w-full h-64 p-3 border rounded-md font-mono text-sm"
+              placeholder={`Paste your "Sign Typed Data" JSON content here, e.g.:
+{
+  "to": "0xa1dabef33b3b82c7814b6d82a79e50f4ac44102b",
+  "value": "0",
+  "data": "0x8d80ff0a...",
+  "operation": "1",
+  ...
+}`}
+              value={jsonInput}
+              onChange={handleJsonInputChange}
+            />
+            
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleParseJson}
+                className="py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Parse JSON
+              </button>
+            </div>
+            
+            {jsonError && (
+              <div className="p-3 bg-red-50 text-red-700 rounded-md">
+                {jsonError}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Basic Info Fields - Always visible */}
