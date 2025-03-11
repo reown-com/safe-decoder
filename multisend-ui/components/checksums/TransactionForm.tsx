@@ -96,6 +96,204 @@ export default function TransactionForm({
   const [jsonInput, setJsonInput] = useState<string>('');
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [showJsonInput, setShowJsonInput] = useState<boolean>(false);
+  const [showSaveDialog, setShowSaveDialog] = useState<boolean>(false);
+  const [customSafeName, setCustomSafeName] = useState<string>('');
+  const [customSafeError, setCustomSafeError] = useState<string | null>(null);
+  
+  // Default known Safe wallets
+  const defaultKnownSafes = [
+    {
+      label: "Select a known Safe wallet",
+      value: "",
+      network: "",
+      chainId: "",
+      address: "",
+      version: ""
+    },
+    {
+      label: "WCF - OP - Treasury",
+      value: "op-wct-treasury",
+      network: "optimism",
+      chainId: "10",
+      address: "0x03296182abE56196472d74947F4b87626b171173",
+      version: "1.3.0"
+    },
+    {
+      label: "Reown - OPS - ETH Mainnet",
+      value: "reown-ops-eth-mainnet",
+      network: "ethereum",
+      chainId: "1",
+      address: "0x68d1CF9984F31C1Da95D81E4aA094Edf24aB4aB8",
+      version: "1.4.1"
+    }
+  ];
+
+  // State for known Safes (including custom ones)
+  const [knownSafes, setKnownSafes] = useState<Array<{
+    label: string;
+    value: string;
+    network: string;
+    chainId: string;
+    address: string;
+    version: string;
+    isCustom?: boolean;
+  }>>(defaultKnownSafes);
+
+  // State to track the currently selected Safe
+  const [selectedSafe, setSelectedSafe] = useState<string>("");
+
+  // Load custom Safes from localStorage on component mount
+  React.useEffect(() => {
+    try {
+      const storedCustomSafes = localStorage.getItem('customSafes');
+      if (storedCustomSafes) {
+        const customSafes = JSON.parse(storedCustomSafes);
+        setKnownSafes([...defaultKnownSafes, ...customSafes]);
+      }
+    } catch (error) {
+      console.error('Error loading custom Safes from localStorage:', error);
+    }
+  }, []);
+
+  // Handle selection of a known Safe wallet
+  const handleKnownSafeSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedValue = e.target.value;
+    setSelectedSafe(selectedValue);
+    
+    if (!selectedValue) {
+      // If the default option is selected, don't update any fields
+      return;
+    }
+    
+    const selectedSafeObj = knownSafes.find(safe => safe.value === selectedValue);
+    if (!selectedSafeObj) return;
+    
+    // Update form fields with the selected Safe's details
+    form.setValue("network", selectedSafeObj.network);
+    form.setValue("chainId", parseInt(selectedSafeObj.chainId));
+    form.setValue("address", selectedSafeObj.address);
+    form.setValue("version", selectedSafeObj.version);
+    
+    // Construct and set the Safe address input in the format: eth:0x...
+    const networkPrefix = NETWORKS.find(n => n.value === selectedSafeObj.network)?.gnosisPrefix || "eth";
+    form.setValue("safeAddressInput", `${networkPrefix}:${selectedSafeObj.address}`);
+  };
+
+  // Reset the selected Safe and clear related form fields
+  const handleResetSafeSelection = () => {
+    setSelectedSafe("");
+    form.setValue("network", "");
+    form.setValue("chainId", "" as any); // Clear the chainId field
+    form.setValue("address", "");
+    form.setValue("version", "1.4.1"); // Reset to default version
+    form.setValue("safeAddressInput", "");
+  };
+
+  // Open the save dialog to save current Safe as a custom Safe
+  const handleOpenSaveDialog = () => {
+    const address = form.getValues("address");
+    const network = form.getValues("network");
+    
+    if (!address) {
+      alert("Please enter a Safe address before saving");
+      return;
+    }
+    
+    if (!network) {
+      alert("Please select a network before saving");
+      return;
+    }
+    
+    // Generate a default name based on the address and network
+    const shortAddress = `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+    const networkName = NETWORKS.find(n => n.value === network)?.label || network;
+    setCustomSafeName(`${shortAddress} on ${networkName}`);
+    
+    setShowSaveDialog(true);
+    setCustomSafeError(null);
+  };
+
+  // Save the current Safe configuration as a custom Safe
+  const handleSaveCustomSafe = () => {
+    if (!customSafeName.trim()) {
+      setCustomSafeError("Please enter a name for this Safe");
+      return;
+    }
+    
+    const address = form.getValues("address");
+    const network = form.getValues("network");
+    const chainId = form.getValues("chainId")?.toString() || "";
+    const version = form.getValues("version") || "1.4.1";
+    
+    if (!address || !network) {
+      setCustomSafeError("Missing required Safe details");
+      return;
+    }
+    
+    // Create a unique value for this custom Safe
+    const customValue = `custom-${network}-${address.toLowerCase()}`;
+    
+    // Check if this Safe already exists
+    if (knownSafes.some(safe => safe.value === customValue)) {
+      setCustomSafeError("This Safe is already saved");
+      return;
+    }
+    
+    // Create the new custom Safe
+    const newCustomSafe = {
+      label: customSafeName,
+      value: customValue,
+      network,
+      chainId,
+      address,
+      version,
+      isCustom: true
+    };
+    
+    // Add to the known Safes list
+    const updatedSafes = [...knownSafes, newCustomSafe];
+    setKnownSafes(updatedSafes);
+    
+    // Save to localStorage
+    try {
+      const customSafes = updatedSafes.filter(safe => safe.isCustom);
+      localStorage.setItem('customSafes', JSON.stringify(customSafes));
+    } catch (error) {
+      console.error('Error saving custom Safes to localStorage:', error);
+    }
+    
+    // Select the newly added Safe
+    setSelectedSafe(customValue);
+    
+    // Close the dialog
+    setShowSaveDialog(false);
+    setCustomSafeName('');
+    setCustomSafeError(null);
+  };
+
+  // Remove a custom Safe from the list
+  const handleRemoveCustomSafe = (safeValue: string) => {
+    if (!confirm("Are you sure you want to remove this Safe from your saved list?")) {
+      return;
+    }
+    
+    // Remove from the known Safes list
+    const updatedSafes = knownSafes.filter(safe => safe.value !== safeValue);
+    setKnownSafes(updatedSafes);
+    
+    // If the removed Safe was selected, reset the selection
+    if (selectedSafe === safeValue) {
+      handleResetSafeSelection();
+    }
+    
+    // Save the updated list to localStorage
+    try {
+      const customSafes = updatedSafes.filter(safe => safe.isCustom);
+      localStorage.setItem('customSafes', JSON.stringify(customSafes));
+    } catch (error) {
+      console.error('Error saving custom Safes to localStorage:', error);
+    }
+  };
   
   // Sample JSON for the "Load Sample" button
   const sampleJson = `{
@@ -412,6 +610,181 @@ export default function TransactionForm({
 
   return (
     <form onSubmit={handleCalculationSubmit} className="space-y-6" role="form">
+      {/* Known Safe Wallets Dropdown */}
+      <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-lg font-medium">Known Safe Wallets</h3>
+          <button
+            type="button"
+            onClick={handleOpenSaveDialog}
+            className="text-sm py-1 px-3 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors flex items-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Save Current Safe
+          </button>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <div className="flex-grow">
+            <select
+              id="knownSafes"
+              value={selectedSafe}
+              onChange={handleKnownSafeSelect}
+              className="w-full p-2 border rounded-md bg-white"
+            >
+              {knownSafes.map((safe) => (
+                <option key={safe.value} value={safe.value}>
+                  {safe.label}{safe.network ? ` (${safe.network.charAt(0).toUpperCase() + safe.network.slice(1)})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedSafe && (
+            <button
+              type="button"
+              onClick={handleResetSafeSelection}
+              className="p-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+              title="Reset selection"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        
+        {selectedSafe && (
+          <div className="mt-3 p-3 bg-white rounded-md border border-gray-200 text-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                {(() => {
+                  const safe = knownSafes.find(s => s.value === selectedSafe);
+                  if (!safe) return null;
+                  
+                  // Network icon based on the network
+                  let networkColor = "bg-gray-500";
+                  if (safe.network === "ethereum") networkColor = "bg-blue-500";
+                  if (safe.network === "optimism") networkColor = "bg-red-500";
+                  if (safe.network === "polygon") networkColor = "bg-purple-500";
+                  if (safe.network === "arbitrum") networkColor = "bg-blue-700";
+                  if (safe.network === "gnosis") networkColor = "bg-green-600";
+                  
+                  return (
+                    <>
+                      <div className={`w-3 h-3 rounded-full ${networkColor} mr-2`}></div>
+                      <span className="font-medium">{safe.label}</span>
+                      <span className="ml-2 text-gray-500">({safe.network.charAt(0).toUpperCase() + safe.network.slice(1)})</span>
+                    </>
+                  );
+                })()}
+              </div>
+              
+              {/* Show remove button for custom Safes */}
+              {knownSafes.find(s => s.value === selectedSafe)?.isCustom && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCustomSafe(selectedSafe)}
+                  className="text-red-500 hover:text-red-700 p-1"
+                  title="Remove this Safe"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-gray-500">Address:</span>
+                <div className="font-mono text-xs truncate">{knownSafes.find(s => s.value === selectedSafe)?.address}</div>
+              </div>
+              <div>
+                <span className="text-gray-500">Version:</span>
+                <div>{knownSafes.find(s => s.value === selectedSafe)?.version}</div>
+              </div>
+            </div>
+            
+            <div className="mt-2">
+              <a 
+                href={`https://app.safe.global/home?safe=${NETWORKS.find(n => n.value === knownSafes.find(s => s.value === selectedSafe)?.network)?.gnosisPrefix || "eth"}:${knownSafes.find(s => s.value === selectedSafe)?.address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 text-xs flex items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                View on Safe Global
+              </a>
+            </div>
+          </div>
+        )}
+        
+        <p className="text-xs text-gray-500 mt-2">
+          Select a known Safe wallet to automatically fill in the details
+        </p>
+      </div>
+
+      {/* Save Custom Safe Dialog */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-medium mb-4">Save Custom Safe</h3>
+            
+            <div className="mb-4">
+              <label htmlFor="customSafeName" className="block text-sm font-medium text-gray-700 mb-1">
+                Safe Name
+              </label>
+              <input
+                type="text"
+                id="customSafeName"
+                value={customSafeName}
+                onChange={(e) => setCustomSafeName(e.target.value)}
+                className="w-full p-2 border rounded-md"
+                placeholder="Enter a name for this Safe"
+              />
+              {customSafeError && (
+                <p className="text-red-500 text-xs mt-1">{customSafeError}</p>
+              )}
+            </div>
+            
+            <div className="text-sm mb-4">
+              <p>The following details will be saved:</p>
+              <ul className="mt-2 space-y-1 text-gray-600">
+                <li><span className="font-medium">Network:</span> {NETWORKS.find(n => n.value === form.getValues("network"))?.label || form.getValues("network")}</li>
+                <li><span className="font-medium">Chain ID:</span> {form.getValues("chainId")}</li>
+                <li><span className="font-medium">Address:</span> {form.getValues("address")}</li>
+                <li><span className="font-medium">Version:</span> {form.getValues("version")}</li>
+              </ul>
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSaveDialog(false);
+                  setCustomSafeName('');
+                  setCustomSafeError(null);
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCustomSafe}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Save Safe
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Safe Address Input */}
       <div className="mb-4">
         <label htmlFor="safeAddressInput" className="block text-sm font-medium text-gray-700 mb-1">
