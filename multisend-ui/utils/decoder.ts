@@ -261,6 +261,29 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
     }
   }
   
+  // setAllowedFrom function (0x1ffacdef)
+  if (functionSignature === '0x1ffacdef') {
+    try {
+      const iface = new ethers.utils.Interface([
+        'function setAllowedFrom(address from, bool allowed) external'
+      ]);
+      const decoded = iface.decodeFunctionData('setAllowedFrom', data);
+      return {
+        name: 'setAllowedFrom(address,bool)',
+        params: {
+          from: decoded.from,
+          allowed: decoded.allowed.toString()
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'setAllowedFrom(address,bool)',
+        params: {},
+        error: 'Failed to decode setAllowedFrom function parameters'
+      };
+    }
+  }
+  
   // injectReward function with signature 0x097cd232
   if (functionSignature === '0x097cd232') {
     try {
