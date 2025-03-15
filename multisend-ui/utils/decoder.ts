@@ -204,8 +204,14 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       // The next 32 bytes is the length of the data
       // Then comes the actual data
       
-      // Skip the offset (32 bytes)
-      const dataWithLength = abiEncodedData.slice(64);
+      // Get the offset from the first 32 bytes
+      const offsetHex = abiEncodedData.slice(0, 64);
+      const offset = parseInt(offsetHex, 16) * 2; // Convert to bytes then to hex chars (×2)
+      
+      // If offset is not 0, we need to skip to the actual data position
+      const dataWithLength = offset === 0 
+        ? abiEncodedData.slice(64) // No offset, data starts after the first 32 bytes
+        : abiEncodedData.slice(offset); // Skip to the position indicated by offset
       
       // Get the length from the next 32 bytes
       const lengthHex = dataWithLength.slice(0, 64);

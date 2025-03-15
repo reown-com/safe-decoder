@@ -115,7 +115,7 @@ export default function TransactionForm({
       value: "op-wct-treasury",
       network: "optimism",
       chainId: "10",
-      address: "0x03296182abE56196472d74947F4b87626b171173",
+      address: "0xa86Ca428512D0A18828898d2e656E9eb1b6bA6E7",
       version: "1.3.0"
     },
     {
