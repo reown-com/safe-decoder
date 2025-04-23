@@ -17,7 +17,8 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.54.2",
     "tesseract.js": "^5.0.4",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "googleapis": "^148.0.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.2",
