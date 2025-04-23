@@ -85,6 +85,8 @@ interface TransactionFormProps {
   isLoading: boolean;
   isApiFetching: boolean;
   triggerApiFetch: () => Promise<void>;
+  initialAmount?: string;
+  initialRecipient?: string;
 }
 
 export default function TransactionForm({
@@ -92,7 +94,9 @@ export default function TransactionForm({
   onSubmit,
   isLoading,
   isApiFetching,
-  triggerApiFetch
+  triggerApiFetch,
+  initialAmount,
+  initialRecipient
 }: TransactionFormProps) {
   const [imageLoading, setImageLoading] = useState(false);
   const [decodedData, setDecodedData] = useState<{ name: string; params: Record<string, string>; error?: string } | null>(null);
@@ -1100,6 +1104,22 @@ export default function TransactionForm({
             placeholder="0x"
           />
           
+          {/* Display Initial Parameters from URL if provided */}
+          {(initialRecipient && initialRecipient !== '0x0000000000000000000000000000000000000000') || (initialAmount && initialAmount !== '0') ? (
+            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm">
+              <h4 className="font-medium text-blue-800 mb-1">Parameters from URL:</h4>
+              <ul className="list-disc list-inside space-y-1">
+                {initialRecipient && initialRecipient !== '0x0000000000000000000000000000000000000000' && (
+                   <li><span className="font-medium">Recipient (To):</span> <span className="font-mono break-all">{initialRecipient}</span></li>
+                )}
+                 {initialAmount && initialAmount !== '0' && (
+                   <li><span className="font-medium">Amount (Value):</span> <span className="font-mono break-all">{initialAmount}</span></li>
+                 )}
+              </ul>
+              <p className="text-xs text-gray-500 mt-2">Note: These values pre-filled the 'To' and 'Value' fields above. Fetching from Safe Service may override them.</p>
+            </div>
+          ) : null}
+
           {/* Decoded Data Display */}
           {decodedData && (
             <div className="mt-2 p-3 bg-gray-50 rounded-md text-sm">

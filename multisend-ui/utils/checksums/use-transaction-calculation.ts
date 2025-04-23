@@ -41,6 +41,9 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
   const addressParam = searchParams.get("address") || "";
   const nonceParam = searchParams.get("nonce") || ""; 
   const safeAddressParam = searchParams.get("safeAddress") || "";
+  const amountParam = searchParams.get("amount") || "0";
+  const recipientParam = searchParams.get("recipient") || "0x0000000000000000000000000000000000000000";
+  const currencyParam = searchParams.get("currency") || "";
 
   let initialFoundNetwork = findNetworkConfig(networkParam);
   let initialDerivedAddress = addressParam;
@@ -69,9 +72,9 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
       chainId: Number(initialDerivedChainId) || 0,
       address: initialDerivedAddress,
       nonce: nonceParam,
+      value: amountParam, 
+      to: recipientParam, 
       version: "1.3.0", // Default version
-      to: "0x0000000000000000000000000000000000000000",
-      value: "0",
       data: "0x",
       operation: "0",
       safeTxGas: "0",
@@ -208,6 +211,10 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
     const currentAddress = searchParams.get("address") || "";
     const currentNonce = searchParams.get("nonce") || ""; 
     const currentSafeAddress = searchParams.get("safeAddress") || "";
+    // Read current amount/recipient params
+    const currentAmount = searchParams.get("amount") || "0";
+    const currentRecipient = searchParams.get("recipient") || "0x0000000000000000000000000000000000000000";
+    const currentCurrency = searchParams.get("currency") || "";
 
     let networkToSet = findNetworkConfig(currentNetworkParam);
     let addressToSet = currentAddress;
@@ -232,7 +239,9 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
       currentFormValues.address !== addressToSet ||
       currentFormValues.nonce !== currentNonce ||
       currentFormValues.safeAddressInput !== safeAddressInputToSet ||
-      currentFormValues.method !== methodToSet;
+      currentFormValues.method !== methodToSet ||
+      currentFormValues.value !== currentAmount ||
+      currentFormValues.to !== currentRecipient;
 
     if (needsReset) {
         console.log("Resetting form based on searchParams change.");
@@ -244,9 +253,8 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
           address: addressToSet,
           nonce: currentNonce,
           version: "1.3.0", // Reset version to default
-          // Reset other fields to default
-          to: "0x0000000000000000000000000000000000000000",
-          value: "0",
+          value: currentAmount,
+          to: currentRecipient,
           data: "0x",
           operation: "0",
           safeTxGas: "0",
@@ -306,6 +314,8 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
     chainId: Number(initialDerivedChainId) || 0,
     address: initialDerivedAddress,
     nonce: nonceParam,
+    initialAmountParam: amountParam,
+    initialRecipientParam: recipientParam,
     handleSafeAddressInputChange 
   };
 } 

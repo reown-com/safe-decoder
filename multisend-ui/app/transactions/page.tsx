@@ -15,6 +15,7 @@ interface TransactionRow {
   date?: string;
   currency?: string;
   amount?: string;
+  recipientAddress?: string;
   nonce?: number;   
 }
 
@@ -92,6 +93,9 @@ export default function TransactionsPage() {
                 <th className="text-left py-3 px-4 font-semibold text-sm">Safe?</th>
                 <th className="text-left py-3 px-4 font-semibold text-sm">Network</th>
                 <th className="text-left py-3 px-4 font-semibold text-sm">Wallet Address</th>
+                <th className="text-left py-3 px-4 font-semibold text-sm">Recipient Address</th>
+                <th className="text-left py-3 px-4 font-semibold text-sm">Currency</th>
+                <th className="text-left py-3 px-4 font-semibold text-sm">Amount</th>
                 <th className="text-left py-3 px-4 font-semibold text-sm">Nonce</th>
                 <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
               </tr>
@@ -104,21 +108,28 @@ export default function TransactionsPage() {
                   <td className="py-3 px-4">{tx.isSafe}</td>
                   <td className="py-3 px-4">{tx.network ?? 'N/A'}</td>
                   <td className="py-3 px-4 font-mono text-xs">{tx.walletAddress ?? 'N/A'}</td>
+                  <td className="py-3 px-4 font-mono text-xs">{tx.recipientAddress ?? 'N/A'}</td>
+                  <td className="py-3 px-4">{tx.currency ?? 'N/A'}</td>
+                  <td className="py-3 px-4">{tx.amount ?? 'N/A'}</td>
                   <td className="py-3 px-4">{tx.nonce ?? 'N/A'}</td>
                   <td className="py-3 px-4">
-                      <Link 
-                        href={(() => {
-                          const networkParam = `network=${encodeURIComponent(tx.network || '')}`;
-                          const addressParam = `address=${encodeURIComponent(tx.walletAddress || '')}`;
-                          const nonceParam = tx.nonce !== undefined ? `&nonce=${encodeURIComponent(tx.nonce)}` : '';
-                          return `/checksums?${networkParam}&${addressParam}${nonceParam}`;
-                        })()}
-                        className={`text-sm ${tx.network && tx.walletAddress && tx.nonce !== undefined ? 'text-blue-500 hover:underline' : 'text-gray-400 pointer-events-none'}`}
-                        onClick={(e) => { if (!tx.network || !tx.walletAddress || tx.nonce === undefined) e.preventDefault(); }}
-                        aria-disabled={!tx.network || !tx.walletAddress || tx.nonce === undefined}
-                      >
-                        Calculate Checksum
-                      </Link>
+                    <Link 
+                      href={(() => {
+                        const params = new URLSearchParams();
+                        if (tx.network) params.set('network', tx.network);
+                        if (tx.walletAddress) params.set('address', tx.walletAddress);
+                        if (tx.nonce !== undefined) params.set('nonce', tx.nonce.toString());
+                        if (tx.recipientAddress) params.set('recipient', tx.recipientAddress);
+                        if (tx.amount) params.set('amount', tx.amount);
+                        if (tx.currency) params.set('currency', tx.currency);
+                        return `/checksums?${params.toString()}`;
+                      })()}
+                      className={`text-sm ${tx.network && tx.walletAddress && tx.nonce !== undefined ? 'text-blue-500 hover:underline' : 'text-gray-400 pointer-events-none'}`}
+                      onClick={(e) => { if (!tx.network || !tx.walletAddress || tx.nonce === undefined) e.preventDefault(); }}
+                      aria-disabled={!tx.network || !tx.walletAddress || tx.nonce === undefined}
+                    >
+                      Calculate Checksum
+                    </Link>
                   </td>
                 </tr>
               ))}

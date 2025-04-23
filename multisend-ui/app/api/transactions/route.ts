@@ -27,16 +27,15 @@ function sheetDataToJson(values: any[][]): Record<string, any>[] {
     const nonce = parseInt(nonceStr, 10);
     
     const rowObject: Record<string, any> = {
-      // Use predefined keys and map based on index
       walletName: row[0] !== undefined ? String(row[0]) : 'N/A', // Index 0
       walletAddress: row[1] !== undefined ? String(row[1]) : 'N/A', // Index 1
       isSafe: row[2] !== undefined ? String(row[2]) : 'N/A',      // Index 2 ('Safe?')
       network: row[3] !== undefined ? String(row[3]) : 'N/A',      // Index 3
       date: row[4] !== undefined ? String(row[4]) : 'N/A',          // Index 4
-      currency: row[5] !== undefined ? String(row[5]) : 'N/A',    // Index 5
-      amount: row[6] !== undefined ? String(row[6]) : 'N/A',      // Index 6
+      currency: row[5] !== undefined ? String(row[5]) : 'N/A',    // Index 5 - Currency
+      amount: row[6] !== undefined ? String(row[6]) : 'N/A',      // Index 6 - Transaction Amount
       nonce: !isNaN(nonce) ? nonce : undefined,                  // Index 7 (parsed)
-      // Add other potentially useful fields if needed, e.g., row[8] is 'Wallet Address per Invoice'?
+      recipientAddress: row[8] !== undefined ? String(row[8]) : 'N/A', // Index 8 - Recipient 
     };
     data.push(rowObject);
   }

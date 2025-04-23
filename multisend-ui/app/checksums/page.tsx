@@ -29,7 +29,9 @@ function ChecksumsContent() {
     isApiFetching,
     calculationRequested,
     handleSubmit,
-    triggerApiFetch
+    triggerApiFetch,
+    initialAmountParam,
+    initialRecipientParam
   } = useTransactionCalculation(searchParams);
 
   const [showResult, setShowResult] = useState(false);
@@ -64,6 +66,8 @@ function ChecksumsContent() {
               isLoading={isLoading}
               isApiFetching={isApiFetching}
               triggerApiFetch={triggerApiFetch}
+              initialAmount={initialAmountParam}
+              initialRecipient={initialRecipientParam}
             />
           </div>
         </div>
