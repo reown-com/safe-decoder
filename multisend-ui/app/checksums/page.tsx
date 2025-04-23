@@ -26,8 +26,10 @@ function ChecksumsContent() {
     form,
     result,
     isLoading,
+    isApiFetching,
     calculationRequested,
     handleSubmit,
+    triggerApiFetch
   } = useTransactionCalculation(searchParams);
 
   const [showResult, setShowResult] = useState(false);
@@ -60,6 +62,8 @@ function ChecksumsContent() {
               form={form}
               onSubmit={handleSubmit}
               isLoading={isLoading}
+              isApiFetching={isApiFetching}
+              triggerApiFetch={triggerApiFetch}
             />
           </div>
         </div>

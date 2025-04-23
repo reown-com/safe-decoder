@@ -83,12 +83,16 @@ interface TransactionFormProps {
   form: UseFormReturn<FormData>;
   onSubmit: (e?: React.BaseSyntheticEvent) => Promise<void>;
   isLoading: boolean;
+  isApiFetching: boolean;
+  triggerApiFetch: () => Promise<void>;
 }
 
 export default function TransactionForm({
   form,
   onSubmit,
-  isLoading
+  isLoading,
+  isApiFetching,
+  triggerApiFetch
 }: TransactionFormProps) {
   const [imageLoading, setImageLoading] = useState(false);
   const [decodedData, setDecodedData] = useState<{ name: string; params: Record<string, string>; error?: string } | null>(null);
@@ -608,6 +612,12 @@ export default function TransactionForm({
     );
   };
 
+  const [network, address, nonce] = form.watch(["network", "address", "nonce"]);
+  const canFetch = network && address && nonce;
+
+  // Log button state variables
+  console.log("[TransactionForm] Button State Check:", { canFetch, isApiFetching, isLoading });
+
   return (
     <form onSubmit={handleCalculationSubmit} className="space-y-6" role="form">
       {/* Known Safe Wallets Dropdown */}
@@ -935,12 +945,40 @@ export default function TransactionForm({
           <label htmlFor="nonce" className="block text-sm font-medium text-gray-700 mb-1">
             Nonce
           </label>
-          <input
-            type="text"
-            id="nonce"
-            {...form.register("nonce")}
-            className="w-full p-2 border rounded-md"
-          />
+          <div className="flex items-center space-x-2">
+             <input
+              type="text"
+              id="nonce"
+              {...form.register("nonce")}
+              className="w-full p-2 border rounded-md"
+            />
+            <button
+              type="button"
+              onClick={triggerApiFetch}
+              disabled={!canFetch || isApiFetching || isLoading}
+              className={`py-2 px-3 rounded-md text-sm whitespace-nowrap ${!canFetch || isApiFetching || isLoading
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                }`}
+            >
+              {isApiFetching ? (
+                 <span className="flex items-center">
+                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                   </svg>
+                    Fetching...
+                 </span>
+              ) : (
+                'Fetch from Safe Service'
+              )}
+            </button>
+          </div>
+           {!canFetch && (
+            <p className="text-xs text-gray-500 mt-1">
+              Network, Safe Address, and Nonce required to fetch.
+            </p>
+          )}
         </div>
 
         <div className="mb-4">
@@ -954,6 +992,7 @@ export default function TransactionForm({
               className="w-full p-2 border rounded-md"
             >
               <option value="1.4.1">1.4.1</option>
+              <option value="1.4.1+L2">1.4.1+L2</option>
               <option value="1.3.0">1.3.0</option>
               <option value="1.2.0">1.2.0</option>
               <option value="1.1.1">1.1.1</option>
@@ -1177,6 +1216,14 @@ export default function TransactionForm({
           </div>
         </div>
       </div>
+
+      {/* Display API Fetch Error */}
+      {form.formState.errors.apiError && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+          <p className="font-bold">API Error:</p>
+          <p>{form.formState.errors.apiError.message}</p>
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button

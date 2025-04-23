@@ -107,8 +107,15 @@ export default function TransactionsPage() {
                   <td className="py-3 px-4">{tx.nonce ?? 'N/A'}</td>
                   <td className="py-3 px-4">
                       <Link 
-                        href={`/checksums?network=${encodeURIComponent(tx.network)}&address=${encodeURIComponent(tx.walletAddress)}&nonce=${tx.nonce}`}
-                        className="text-blue-500 hover:underline text-sm"
+                        href={(() => {
+                          const networkParam = `network=${encodeURIComponent(tx.network || '')}`;
+                          const addressParam = `address=${encodeURIComponent(tx.walletAddress || '')}`;
+                          const nonceParam = tx.nonce !== undefined ? `&nonce=${encodeURIComponent(tx.nonce)}` : '';
+                          return `/checksums?${networkParam}&${addressParam}${nonceParam}`;
+                        })()}
+                        className={`text-sm ${tx.network && tx.walletAddress && tx.nonce !== undefined ? 'text-blue-500 hover:underline' : 'text-gray-400 pointer-events-none'}`}
+                        onClick={(e) => { if (!tx.network || !tx.walletAddress || tx.nonce === undefined) e.preventDefault(); }}
+                        aria-disabled={!tx.network || !tx.walletAddress || tx.nonce === undefined}
                       >
                         Calculate Checksum
                       </Link>

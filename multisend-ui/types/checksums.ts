@@ -1,13 +1,13 @@
 export interface FormData {
   safeAddressInput: string; // New field for Safe address/URL input
-  method: string; // "direct" or "api"
+  method: 'direct' | 'api';
   network: string;
   chainId: number;
   address: string;
   to: string;
   value: string;
   data: string;
-  operation: string;
+  operation: string; // '0' for CALL, '1' for DELEGATECALL
   safeTxGas: string;
   baseGas: string;
   gasPrice: string;
@@ -15,6 +15,7 @@ export interface FormData {
   refundReceiver: string;
   nonce: string;
   version: string;
+  apiError?: string; // Add optional field for API errors
 }
 
 export interface CalculationResult {
