@@ -18,7 +18,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "ethers": "^5.7.2"
+    "ethers": "^5.7.2",
+    "googleapis": "^148.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.19",

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { ReadonlyURLSearchParams } from "next/navigation";
 import { NETWORKS } from "./constants";
@@ -12,36 +12,47 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [calculationRequested, setCalculationRequested] = useState(false);
+  const initialParamsLoaded = useRef(false); // Track if initial params have been processed
 
-  // Extract parameters from URL
-  const [safeAddress] = useState(searchParams.get("safeAddress") || "");
-  const [network] = useState(() => {
-    const prefix = safeAddress.split(":")[0];
-    return NETWORKS.find((n) => n.gnosisPrefix === prefix)?.value || "";
-  });
-  const [chainId] = useState(() => {
-    const prefix = safeAddress.split(":")[0];
-    return NETWORKS.find((n) => n.gnosisPrefix === prefix)?.chainId || "";
-  });
-  const [address] = useState(() => {
-    const _address = safeAddress.match(/0x[a-fA-F0-9]{40}/)?.[0];
-    if (_address) {
-      return _address;
-    } else {
-      return "";
+  // --- Parameter Extraction Logic ---
+  // Prioritize direct params, fall back to safeAddress
+  const initialNetwork = searchParams.get("network") || "";
+  const initialAddress = searchParams.get("address") || "";
+  const initialNonce = searchParams.get("nonce") || "";
+  const initialSafeAddress = searchParams.get("safeAddress") || "";
+  
+  let derivedNetwork = initialNetwork;
+  let derivedAddress = initialAddress;
+  let derivedChainId = "";
+
+  if (!derivedNetwork || !derivedAddress) {
+    // If direct params missing, try parsing safeAddress
+    const parsedFromSafeAddr = parseSafeAddressInput(initialSafeAddress);
+    if (parsedFromSafeAddr) {
+      derivedNetwork = derivedNetwork || parsedFromSafeAddr.network;
+      derivedAddress = derivedAddress || parsedFromSafeAddr.address;
+      derivedChainId = derivedChainId || parsedFromSafeAddr.chainId;
     }
-  });
-  const [nonce] = useState(searchParams.get("nonce") || "");
+  }
+
+  // Ensure chainId is set if network is known
+  if (derivedNetwork && !derivedChainId) {
+    derivedChainId = NETWORKS.find((n) => n.value === derivedNetwork)?.chainId || "";
+  }
+
+  // Combine initial safeAddressInput based on what was found
+  const defaultSafeAddressInput = initialSafeAddress || (derivedNetwork && derivedAddress ? `${NETWORKS.find(n => n.value === derivedNetwork)?.gnosisPrefix || derivedNetwork}:${derivedAddress}` : "");
+  const defaultMethod = (initialNetwork && initialAddress && initialNonce) ? "api" : "direct";
 
   // Initialize form
   const form = useForm<FormData>({
     defaultValues: {
-      safeAddressInput: safeAddress || "",
-      method: "direct",
-      network: network,
-      chainId: Number(chainId),
-      address: address,
-      nonce: nonce,
+      safeAddressInput: defaultSafeAddressInput,
+      method: defaultMethod, // Set to 'api' if direct params are present
+      network: derivedNetwork,
+      chainId: Number(derivedChainId) || 0,
+      address: derivedAddress,
+      nonce: initialNonce,
       to: "0x0000000000000000000000000000000000000000",
       value: "0",
       data: "0x",
@@ -55,19 +66,64 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
     },
   });
 
-  // Set initial values from search parameter
+  // Reset form values if searchParams change significantly after initial load
+  // This handles cases where the user navigates between checksum links
   useEffect(() => {
-    if (safeAddress) {
-      form.setValue("safeAddressInput", safeAddress);
-      form.setValue("network", network);
-      form.setValue("chainId", Number(chainId));
-      form.setValue("address", address);
-      if (nonce) {
-        form.setValue("nonce", nonce);
-        form.setValue("method", "api");
+    const currentNetwork = searchParams.get("network") || "";
+    const currentAddress = searchParams.get("address") || "";
+    const currentNonce = searchParams.get("nonce") || "";
+    const currentSafeAddress = searchParams.get("safeAddress") || "";
+
+    let networkToSet = currentNetwork;
+    let addressToSet = currentAddress;
+    let chainIdToSet = "";
+    let safeAddressInputToSet = currentSafeAddress;
+    let methodToSet = "direct";
+
+    if (!networkToSet || !addressToSet) {
+      const parsed = parseSafeAddressInput(currentSafeAddress);
+      if (parsed) {
+        networkToSet = networkToSet || parsed.network;
+        addressToSet = addressToSet || parsed.address;
+        chainIdToSet = chainIdToSet || parsed.chainId;
+        safeAddressInputToSet = currentSafeAddress || `${NETWORKS.find(n => n.value === parsed.network)?.gnosisPrefix || parsed.network}:${parsed.address}`;
       }
     }
-  }, [safeAddress, nonce, form, network, chainId, address]);
+    
+    if (networkToSet && !chainIdToSet) {
+       chainIdToSet = NETWORKS.find((n) => n.value === networkToSet)?.chainId || "";
+    }
+
+    if (networkToSet && addressToSet && currentNonce) {
+      methodToSet = "api";
+    }
+
+    form.reset({
+      ...form.getValues(), // Keep other values if they exist
+      safeAddressInput: safeAddressInputToSet,
+      method: methodToSet,
+      network: networkToSet,
+      chainId: Number(chainIdToSet) || 0,
+      address: addressToSet,
+      nonce: currentNonce,
+      // Reset potentially fetched data if params change
+      to: "0x0000000000000000000000000000000000000000",
+      value: "0",
+      data: "0x",
+      operation: "0",
+      safeTxGas: "0",
+      baseGas: "0",
+      gasPrice: "0",
+      gasToken: "0x0000000000000000000000000000000000000000",
+      refundReceiver: "0x0000000000000000000000000000000000000000",
+    });
+    
+    // Mark initial params as processed after the first run
+    if (!initialParamsLoaded.current) {
+      initialParamsLoaded.current = true;
+    }
+
+  }, [searchParams, form]); // Rerun when searchParams change
 
   // Handle Safe address input changes
   const handleSafeAddressInputChange = (input: string) => {
@@ -98,7 +154,8 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
     return () => subscription.unsubscribe();
   }, [form]);
 
-  const handleSubmit = async (data: FormData) => {
+  // Wrap handleSubmit in useCallback for stable reference
+  const handleSubmitCallback = useCallback(async (data: FormData) => {
     setIsLoading(true);
     setResult(null);
     setCalculationRequested(true);
@@ -188,19 +245,35 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
     } finally {
       setIsLoading(false);
     }
-  };
+  // Dependencies for useCallback: Include all variables from the outer scope used inside
+  }, [form, setResult, setIsLoading, setCalculationRequested]);
+
+  // --- Auto-trigger calculation based on initial params ---
+  useEffect(() => {
+    // Only run this effect once after initial params are loaded
+    if (initialParamsLoaded.current && derivedNetwork && derivedAddress && initialNonce) {
+        // Check if calculation hasn't been requested or is not already loading
+        if (!calculationRequested && !isLoading) {
+            console.log("Auto-triggering calculation from URL params...");
+            // Use the stable callback here
+            handleSubmitCallback(form.getValues());
+        }
+    }
+  // Add handleSubmitCallback to dependencies
+  }, [initialParamsLoaded.current, derivedNetwork, derivedAddress, initialNonce, form, handleSubmitCallback, calculationRequested, isLoading]); // Dependencies
 
   return {
     form,
     result,
     isLoading,
     calculationRequested,
-    handleSubmit: form.handleSubmit(handleSubmit),
-    safeAddress,
-    network,
-    chainId,
-    address,
-    nonce,
+    // Expose the react-hook-form submit handler, which internally calls our useCallback version
+    handleSubmit: form.handleSubmit(handleSubmitCallback),
+    safeAddress: initialSafeAddress,
+    network: derivedNetwork,
+    chainId: Number(derivedChainId) || 0,
+    address: derivedAddress,
+    nonce: initialNonce,
     handleSafeAddressInputChange
   };
 } 
