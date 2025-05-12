@@ -9,27 +9,10 @@ import {
   tryDecodeFunctionData, 
   decodeTransactionData, 
   DecodedTransaction,
-  parseSignTypedDataJson
+  parseSignTypedDataJson,
+  decodeMultiSendTransactions,
+  normalizeHexString
 } from '@/utils/decoder';
-
-/**
- * Ensures a hex string has an even number of characters (excluding the 0x prefix)
- * @param hexString The hex string to normalize
- * @returns A normalized hex string with even length
- */
-function normalizeHexString(hexString: string): string {
-  // Return early if input is not a string or is empty
-  if (!hexString || typeof hexString !== 'string') return '';
-  
-  // Remove 0x prefix if present
-  const withoutPrefix = hexString.startsWith('0x') ? hexString.slice(2) : hexString;
-  
-  // If the length is odd, add a leading zero
-  const normalized = withoutPrefix.length % 2 !== 0 ? `0${withoutPrefix}` : withoutPrefix;
-  
-  // Add the 0x prefix back
-  return `0x${normalized}`;
-}
 
 /**
  * Represents a transaction with decoded data
@@ -321,75 +304,88 @@ export default function TransactionForm({
   React.useEffect(() => {
     const subscription = form.watch((value, { name }) => {
       if (name === "data") {
-        const data = value.data as string;
-        if (data && data !== '0x') {
+        const currentData = value.data as string;
+        setDecodedData(null); // Reset states
+        setDecodedTransactions(null);
+
+        if (currentData && currentData !== '0x') {
           try {
-            // First try to decode as multisend
-            try {
-              const normalizedData = normalizeHexString(data);
-              const transactions = decodeTransactionData(normalizedData);
-              if (transactions.length > 1) {
-                // It's a multisend transaction
-                setDecodedTransactions(decodeTransactionsRecursively(transactions));
-                setDecodedData(null);
-                return;
-              }
-            } catch (error) {
-              console.error("Error decoding multisend data:", error);
-            }
+            const normalizedCurrentData = normalizeHexString(currentData);
             
-            // If not multisend or multisend decoding failed, try as regular function call
-            const decoded = tryDecodeFunctionData(normalizeHexString(data));
-            setDecodedData(decoded);
-            setDecodedTransactions(null);
+            // 1. Check if the currentData is a call to multiSend(bytes)
+            const topLevelDecoded = tryDecodeFunctionData(normalizedCurrentData);
+            if (topLevelDecoded && topLevelDecoded.name === 'multiSend(bytes)' && topLevelDecoded.params.transactions) {
+              const innerTransactionsData = '0x' + topLevelDecoded.params.transactions;
+              const decodedInnerTxs = decodeMultiSendTransactions(innerTransactionsData);
+              setDecodedTransactions(decodeTransactionsRecursively(decodedInnerTxs));
+              setDecodedData(topLevelDecoded); // Show the outer multiSend(bytes) call
+            } else {
+              // 2. If not multiSend(bytes), try to decode it as a bundle of transactions OR a single transaction
+              const transactions = decodeTransactionData(normalizedCurrentData);
+              if (transactions.length > 1) {
+                setDecodedTransactions(decodeTransactionsRecursively(transactions));
+                setDecodedData(null); // This is a bundle, not a single call
+              } else if (transactions.length === 1) {
+                // It's a single transaction, try to decode its function data
+                setDecodedData(tryDecodeFunctionData(normalizeHexString(transactions[0].data)));
+                setDecodedTransactions(null);
+              } else {
+                // Fallback: Still try to decode as a single function if no transactions were found by decodeTransactionData
+                // This might happen if data is very short or not a bundle.
+                setDecodedData(tryDecodeFunctionData(normalizedCurrentData));
+                setDecodedTransactions(null);
+              }
+            }
           } catch (error) {
-            console.error("Error decoding data:", error);
-            setDecodedData(null);
+            console.error("Error decoding data in watcher (in form):", error);
+            setDecodedData({ name: "Error decoding data", params: {}, error: (error instanceof Error ? error.message : String(error)) });
             setDecodedTransactions(null);
           }
-        } else {
-          setDecodedData(null);
-          setDecodedTransactions(null);
         }
       }
     });
-    
-    // Initial decode of current data
-    const currentData = form.getValues("data");
-    if (currentData && currentData !== '0x') {
+
+    // Initial decode of current data (this logic should be consistent with the watcher)
+    const initialData = form.getValues("data");
+    if (initialData && initialData !== '0x') {
       try {
-        // First try to decode as multisend
-        try {
-          const normalizedData = normalizeHexString(currentData);
-          const transactions = decodeTransactionData(normalizedData);
+        const normalizedInitialData = normalizeHexString(initialData);
+        const topLevelDecoded = tryDecodeFunctionData(normalizedInitialData);
+
+        if (topLevelDecoded && topLevelDecoded.name === 'multiSend(bytes)' && topLevelDecoded.params.transactions) {
+          const innerTransactionsData = '0x' + topLevelDecoded.params.transactions;
+          const decodedInnerTxs = decodeMultiSendTransactions(innerTransactionsData);
+          setDecodedTransactions(decodeTransactionsRecursively(decodedInnerTxs));
+          setDecodedData(topLevelDecoded);
+        } else {
+          const transactions = decodeTransactionData(normalizedInitialData);
           if (transactions.length > 1) {
-            // It's a multisend transaction
             setDecodedTransactions(decodeTransactionsRecursively(transactions));
             setDecodedData(null);
-            return;
+          } else if (transactions.length === 1) {
+            setDecodedData(tryDecodeFunctionData(normalizeHexString(transactions[0].data)));
+            setDecodedTransactions(null);
+          } else {
+            setDecodedData(tryDecodeFunctionData(normalizedInitialData));
+            setDecodedTransactions(null);
           }
-        } catch (error) {
-          console.error("Error decoding multisend data:", error);
         }
-        
-        // If not multisend or multisend decoding failed, try as regular function call
-        const decoded = tryDecodeFunctionData(normalizeHexString(currentData));
-        setDecodedData(decoded);
-        setDecodedTransactions(null);
       } catch (error) {
-        console.error("Error decoding data:", error);
-        setDecodedData(null);
+        console.error("Error decoding initial data (in form):", error);
+        setDecodedData({ name: "Error decoding initial data", params: {}, error: (error instanceof Error ? error.message : String(error)) });
         setDecodedTransactions(null);
       }
+    } else {
+      setDecodedData(null);
+      setDecodedTransactions(null);
     }
     
     return () => {
-      // Check if unsubscribe is a function before calling it
       if (subscription && typeof subscription.unsubscribe === 'function') {
         subscription.unsubscribe();
       }
     };
-  }, [form]);
+  }, [form]); // form.watch should be stable. form.getValues("data") could be a dependency if needed.
 
   const handleCalculationSubmit = async (e?: React.BaseSyntheticEvent) => {
     e?.preventDefault();
@@ -439,32 +435,7 @@ export default function TransactionForm({
     if (data.value) form.setValue('value', data.value);
     if (data.data) {
       const normalizedData = normalizeHexString(data.data);
-      form.setValue('data', normalizedData);
-      
-      // Try to decode the data
-      try {
-        // First try to decode as multisend
-        try {
-          const transactions = decodeTransactionData(normalizedData);
-          if (transactions.length > 1) {
-            // It's a multisend transaction
-            setDecodedTransactions(decodeTransactionsRecursively(transactions));
-            setDecodedData(null);
-            return;
-          }
-        } catch (error) {
-          console.error("Error decoding multisend data:", error);
-        }
-        
-        // If not multisend or multisend decoding failed, try as regular function call
-        const decoded = tryDecodeFunctionData(normalizedData);
-        setDecodedData(decoded);
-        setDecodedTransactions(null);
-      } catch (error) {
-        console.error("Error decoding data:", error);
-        setDecodedData(null);
-        setDecodedTransactions(null);
-      }
+      form.setValue('data', normalizedData); // This will trigger the useEffect for decoding
     }
     if (data.operation) form.setValue('operation', data.operation);
     if (data.safeTxGas) form.setValue('safeTxGas', data.safeTxGas);
@@ -502,7 +473,7 @@ export default function TransactionForm({
       // Update form fields with the parsed data
       form.setValue('to', parsedData.to);
       form.setValue('value', parsedData.value);
-      form.setValue('data', parsedData.data);
+      form.setValue('data', parsedData.data); // This will trigger the useEffect for decoding
       form.setValue('operation', parsedData.operation);
       form.setValue('safeTxGas', parsedData.safeTxGas);
       form.setValue('baseGas', parsedData.baseGas);
@@ -616,7 +587,10 @@ export default function TransactionForm({
     );
   };
 
-  const [network, address, nonce] = form.watch(["network", "address", "nonce"]);
+  // Use individual watch calls instead of array destructuring
+  const network = form.watch("network");
+  const address = form.watch("address");
+  const nonce = form.watch("nonce");
   const canFetch = network && address && nonce;
 
   // Log button state variables

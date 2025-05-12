@@ -17,30 +17,34 @@ export interface DecodedTransaction {
  * @returns An array of decoded transactions
  */
 export function decodeMultiSendTransactions(data: string): DecodedTransaction[] {
-  // Remove '0x' prefix if present
-  const hexData = data.startsWith('0x') ? data.slice(2) : data;
+  const normalizedData = normalizeHexString(data); // Ensure data is normalized at the start
+  let hexData = normalizedData.startsWith('0x') ? normalizedData.slice(2) : normalizedData;
   
+  if (!hexData) {
+    return []; // Return empty array if hexData is empty after normalization
+  }
+
   const transactions: DecodedTransaction[] = [];
-  let position = 0;
+  let currentIndex = 0;
   
-  while (position < hexData.length) {
+  while (currentIndex < hexData.length) {
     // Extract each field according to the format
-    const operation = parseInt(hexData.slice(position, position + 2), 16);
-    position += 2; // 1 byte for operation
+    const operation = parseInt(hexData.slice(currentIndex, currentIndex + 2), 16);
+    currentIndex += 2; // 1 byte for operation
     
-    const to = '0x' + hexData.slice(position, position + 40);
-    position += 40; // 20 bytes for address
+    const to = '0x' + hexData.slice(currentIndex, currentIndex + 40);
+    currentIndex += 40; // 20 bytes for address
     
-    const valueHex = hexData.slice(position, position + 64);
+    const valueHex = hexData.slice(currentIndex, currentIndex + 64);
     const value = ethers.BigNumber.from('0x' + valueHex).toString();
-    position += 64; // 32 bytes for value
+    currentIndex += 64; // 32 bytes for value
     
-    const dataLengthHex = hexData.slice(position, position + 64);
+    const dataLengthHex = hexData.slice(currentIndex, currentIndex + 64);
     const dataLength = parseInt(dataLengthHex, 16) * 2; // Convert to bytes then to hex chars (×2)
-    position += 64; // 32 bytes for data length
+    currentIndex += 64; // 32 bytes for data length
     
-    const txData = '0x' + hexData.slice(position, position + dataLength);
-    position += dataLength; // Variable length for data
+    const txData = '0x' + hexData.slice(currentIndex, currentIndex + dataLength);
+    currentIndex += dataLength; // Variable length for data
     
     transactions.push({
       operation,
@@ -60,75 +64,106 @@ export function decodeMultiSendTransactions(data: string): DecodedTransaction[] 
  * @returns An array with a single decoded transaction
  */
 export function decodeRegularFunctionCall(data: string): DecodedTransaction[] {
-  // Remove '0x' prefix if present
-  const hexData = data.startsWith('0x') ? data.slice(2) : data;
-  
-  // For a regular function call, we need at least a function selector (4 bytes)
-  if (hexData.length < 8) {
-    throw new Error('Invalid function call data: too short');
+  const normalizedData = normalizeHexString(data); // Ensure data is normalized
+  const functionSignature = normalizedData.slice(0, 10);
+
+  // Check minimum length for signature
+  if (normalizedData.length < 10) {
+    console.warn("Data too short for function call decoding:", normalizedData);
+    return [];
   }
-  
+
+  let decodedTx: DecodedTransaction | null = null;
+
   // Check if this is a function call to a contract address
   // Function selector is the first 4 bytes (8 hex chars)
-  const functionSelector = hexData.slice(0, 8);
-  
-  // If the first 4 bytes are a function selector, extract the target address if present
-  // For example, in claim(address), the address would be in the next 32 bytes
-  let to = '0x0000000000000000000000000000000000000000'; // Default zero address
-  
-  // If there are parameters, try to extract them
-  if (hexData.length >= 8 + 64) { // selector + at least one parameter (32 bytes)
-    // For address parameters, they are padded to 32 bytes, with the actual address in the last 20 bytes
-    const addressParam = hexData.slice(8, 8 + 64);
-    // Extract the last 40 chars (20 bytes) which represent the address
-    to = '0x' + addressParam.slice(24);
+  if (functionSignature === '0x8d80ff0a') {
+    // If the first 4 bytes are a function selector, extract the target address if present
+    // For example, in claim(address), the address would be in the next 32 bytes
+    let to = '0x0000000000000000000000000000000000000000'; // Default zero address
+    
+    // If there are parameters, try to extract them
+    if (normalizedData.length >= 8 + 64) { // selector + at least one parameter (32 bytes)
+      // For address parameters, they are padded to 32 bytes, with the actual address in the last 20 bytes
+      const addressParam = normalizedData.slice(8, 8 + 64);
+      // Extract the last 40 chars (20 bytes) which represent the address
+      to = '0x' + addressParam.slice(24);
+    }
+    
+    // Create a transaction object
+    decodedTx = {
+      operation: 0, // Regular call
+      to: to,
+      value: '0', // No value transfer in a regular function call
+      dataLength: normalizedData.length / 2,
+      data: normalizedData
+    };
+  } else {
+    // If not a multiSend function call, try normal decoding
+    decodedTx = {
+      operation: 0, // Regular call
+      to: '0x0000000000000000000000000000000000000000', // Default zero address
+      value: '0', // No value transfer in a regular function call
+      dataLength: normalizedData.length / 2,
+      data: normalizedData
+    };
   }
   
-  // Create a transaction object
-  const transaction: DecodedTransaction = {
-    operation: 0, // Regular call
-    to: to,
-    value: '0', // No value transfer in a regular function call
-    dataLength: hexData.length / 2,
-    data: '0x' + hexData
-  };
-  
-  return [transaction];
+  return decodedTx ? [decodedTx] : [];
 }
 
 /**
- * Attempts to decode transaction data, handling both multisend and regular function calls
- * @param data - The transaction data to decode
- * @returns An array of decoded transactions
+ * Decodes arbitrary transaction data, attempting to handle multiSend(bytes) wrappers,
+ * direct multisend bundles, and single function calls.
+ * @param data The transaction data hex string.
+ * @returns An array of decoded transactions.
  */
 export function decodeTransactionData(data: string): DecodedTransaction[] {
-  // Remove '0x' prefix if present for analysis
-  const hexData = data.startsWith('0x') ? data.slice(2) : data;
-  
-  try {
-    // First try to decode as multisend
-    // In multisend format, the first byte is operation (0 or 1), followed by an address (20 bytes)
-    // We can check if the data follows this pattern
-    
-    // Check if the data is long enough for at least one multisend transaction
-    // (1 byte operation + 20 bytes address + 32 bytes value + 32 bytes dataLength + some data)
-    if (hexData.length >= 2 + 40 + 64 + 64) {
-      // Check if the first byte is a valid operation (0 or 1)
-      const firstByte = parseInt(hexData.slice(0, 2), 16);
-      if (firstByte === 0 || firstByte === 1) {
-        try {
-          return decodeMultiSendTransactions(data);
-        } catch (error) {
-          // If multisend decoding fails, fall back to regular function call
-          console.warn('Failed to decode as multisend, trying as regular function call', error);
-        }
+  const normalizedData = normalizeHexString(data);
+
+  if (normalizedData === '0x') {
+    return []; // Return empty array for empty or invalid data
+  }
+
+  // 1. Check for the multiSend(bytes) signature (0x8d80ff0a)
+  if (normalizedData.startsWith('0x8d80ff0a')) {
+    try {
+      const decodedOuter = tryDecodeFunctionData(normalizedData);
+      if (decodedOuter && decodedOuter.name === 'multiSend(bytes)' && decodedOuter.params.transactions) {
+        // Successfully decoded the outer call, now decode the inner transactions payload
+        const innerTransactionsData = '0x' + decodedOuter.params.transactions;
+        // Use decodeMultiSendTransactions for the inner data
+        return decodeMultiSendTransactions(innerTransactionsData);
+      } else {
+        // Started with the signature but failed to decode parameters.
+        // This indicates malformed multiSend(bytes) data.
+        console.error("Data starts with multiSend(bytes) signature but failed to decode parameters:", decodedOuter?.error);
+        throw new Error("Failed to decode parameters for multiSend(bytes) call.");
       }
+    } catch (error) {
+      console.error('Error decoding multiSend(bytes) wrapper:', error);
+      // Rethrow the error as it's expected to be a multiSend(bytes) call
+      throw new Error('Failed to decode presumed multiSend(bytes) data: ' + (error instanceof Error ? error.message : String(error)));
     }
-    
-    // If not multisend or multisend decoding failed, try as regular function call
-    return decodeRegularFunctionCall(data);
+  }
+
+  // 2. If not multiSend(bytes), try decoding as a direct multisend bundle
+  try {
+    // Pass the already normalized data directly
+    return decodeMultiSendTransactions(normalizedData);
   } catch (error) {
-    console.error('Failed to decode transaction data', error);
+    // Failed to decode as direct multisend bundle, log and continue
+    // This is expected if the data is a single function call.
+    console.warn('Data did not decode as a multisend bundle, trying as regular function call.');
+  }
+
+  // 3. If not a multisend bundle, try as a single regular function call
+  try {
+    // decodeRegularFunctionCall expects an array, so wrap the result
+    // Pass the already normalized data directly
+    return decodeRegularFunctionCall(normalizedData);
+  } catch (error) {
+    console.error('Failed to decode transaction data as any known type:', error);
     throw new Error('Failed to decode transaction data: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
@@ -163,21 +198,19 @@ export function formatValue(value: string): string {
  * @returns A formatted string with scientific notation if needed
  */
 export function formatLargeNumber(value: string): string {
-  try {
-    const num = ethers.BigNumber.from(value);
-    const numStr = num.toString();
-    
-    // For small numbers, just return the string
-    if (numStr.length <= 10) {
-      return numStr;
-    }
-    
-    // For large numbers, use scientific notation
-    const scientificNotation = `${numStr} [${parseFloat(numStr).toExponential(2)}]`;
-    return scientificNotation;
-  } catch (error) {
-    return value;
+  const num = ethers.BigNumber.from(value);
+  const numStr = num.toString();
+  
+  // For small numbers, just return the string
+  if (numStr.length <= 10) {
+    return numStr;
   }
+  
+  // For large numbers, use scientific notation
+  // Note: parseFloat might lose precision for very large numbers, 
+  // but it's primarily for display readability here.
+  const scientificNotation = `${numStr} [${parseFloat(numStr).toExponential(2)}]`;
+  return scientificNotation;
 }
 
 /**
@@ -195,37 +228,49 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
   if (functionSignature === '0x8d80ff0a') {
     try {
       // The multiSend function has a bytes parameter that is ABI-encoded
-      // The format is: 0x8d80ff0a + [32 bytes offset] + [32 bytes length] + [actual data]
+      // Standard format for dynamic bytes: [offset (32 bytes)][length (32 bytes)][data...]
+      // The offset points to the start of the length field.
       
-      // Skip function signature (4 bytes) and get the data part
-      const abiEncodedData = data.slice(10);
+      // Skip function signature (4 bytes / 10 hex chars)
+      const abiEncodedParams = data.slice(10);
       
-      // In ABI encoding, the first 32 bytes (64 hex chars) is the offset to the data
-      // The next 32 bytes is the length of the data
-      // Then comes the actual data
+      // 1. Read the offset (first 32 bytes / 64 hex chars)
+      if (abiEncodedParams.length < 64) {
+        throw new Error("Data too short to read offset");
+      }
+      const offsetHex = abiEncodedParams.slice(0, 64);
+      const offsetBytes = parseInt(offsetHex, 16); // Offset in bytes
+      const offsetHexChars = offsetBytes * 2;
+
+      // Check if offset is reasonable (within the provided data)
+      // Offset points to the start of the length field, so we need at least offset + 32 bytes (64 hex chars) for length
+      if (abiEncodedParams.length < offsetHexChars + 64) {
+          throw new Error(`Data too short to read length at offset ${offsetBytes}`);
+      }
+
+      // 2. Read the length (32 bytes / 64 hex chars) starting at the offset
+      const lengthHex = abiEncodedParams.slice(offsetHexChars, offsetHexChars + 64);
+      const lengthBytes = parseInt(lengthHex, 16); // Length in bytes
+      const lengthHexChars = lengthBytes * 2;
+
+      // Check if data is long enough to contain the specified length of data
+      // Data starts immediately after the length field
+      if (abiEncodedParams.length < offsetHexChars + 64 + lengthHexChars) {
+        throw new Error(`Data too short to read ${lengthBytes} bytes of data starting after length field`);
+      }
+
+      // 3. Extract the actual transactions data
+      const transactionsData = abiEncodedParams.slice(
+        offsetHexChars + 64, // Start after the length field
+        offsetHexChars + 64 + lengthHexChars // Read for 'lengthBytes' bytes
+      );
       
-      // Get the offset from the first 32 bytes
-      const offsetHex = abiEncodedData.slice(0, 64);
-      const offset = parseInt(offsetHex, 16) * 2; // Convert to bytes then to hex chars (×2)
-      
-      // If offset is not 0, we need to skip to the actual data position
-      const dataWithLength = offset === 0 
-        ? abiEncodedData.slice(64) // No offset, data starts after the first 32 bytes
-        : abiEncodedData.slice(offset); // Skip to the position indicated by offset
-      
-      // Get the length from the next 32 bytes
-      const lengthHex = dataWithLength.slice(0, 64);
-      const length = parseInt(lengthHex, 16) * 2; // Convert to bytes then to hex chars (×2)
-      
-      // Get the actual transaction data
-      const transactionsData = dataWithLength.slice(64, 64 + length);
-      
-      // Try to decode the transactions
+      // Try to decode the transactions to get a count (optional, for display)
       let decodedTransactions: DecodedTransaction[] = [];
       try {
         decodedTransactions = decodeMultiSendTransactions('0x' + transactionsData);
-      } catch (error) {
-        console.error('Failed to decode multiSend transactions:', error);
+      } catch (decodeError) {
+        console.warn('Could not decode inner transactions within multiSend for count:', decodeError);
       }
       
       return {
@@ -236,10 +281,11 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
         }
       };
     } catch (error) {
+      console.error("Error decoding multiSend(bytes) parameters:", error);
       return {
         name: 'multiSend(bytes)',
         params: {},
-        error: 'Failed to decode multiSend function parameters'
+        error: 'Failed to decode multiSend function parameters: ' + (error instanceof Error ? error.message : String(error))
       };
     }
   }
@@ -251,18 +297,21 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
         'function approve(address spender, uint256 amount) external returns (bool)'
       ]);
       const decoded = iface.decodeFunctionData('approve', data);
+      // Ensure spender address is lowercase
+      const spenderAddress = decoded.spender ? decoded.spender.toLowerCase() : '0x0000000000000000000000000000000000000000';
       return {
         name: 'approve(address,uint256)',
         params: {
-          spender: decoded.spender,
+          spender: spenderAddress, // Use lowercased address
           amount: decoded.amount.toString()
         }
       };
     } catch (error) {
+      console.error("Error decoding approve(address,uint256) parameters:", error);
       return {
         name: 'approve(address,uint256)',
         params: {},
-        error: 'Failed to decode approve function parameters'
+        error: 'Failed to decode approve function parameters: ' + (error instanceof Error ? error.message : String(error))
       };
     }
   }
@@ -277,7 +326,7 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       return {
         name: 'setAllowedFrom(address,bool)',
         params: {
-          from: decoded.from,
+          from: decoded.from.toLowerCase(),
           allowed: decoded.allowed.toString()
         }
       };
@@ -338,7 +387,7 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       return {
         name: 'transfer(address,uint256)',
         params: {
-          recipient: recipient,
+          recipient: recipient.toLowerCase(),
           amount: amount
         }
       };
@@ -358,10 +407,11 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
         'function claim(address account) external'
       ]);
       const decoded = iface.decodeFunctionData('claim', data);
+      const account = (decoded.account || decoded[0]).toLowerCase();
       return {
         name: 'claim(address)',
         params: {
-          account: decoded.account || decoded[0]
+          account: account
         }
       };
     } catch (error) {
@@ -387,9 +437,9 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       return {
         name: 'swapOwner(address,address,address)',
         params: {
-          prevOwner: prevOwner,
-          oldOwner: oldOwner,
-          newOwner: newOwner
+          prevOwner: prevOwner.toLowerCase(),
+          oldOwner: oldOwner.toLowerCase(),
+          newOwner: newOwner.toLowerCase()
         }
       };
     } catch (error) {
@@ -454,8 +504,8 @@ export function parseSignTypedDataJson(jsonString: string): {
       safeTxGas: parsedData.safeTxGas || '0',
       baseGas: parsedData.baseGas || '0',
       gasPrice: parsedData.gasPrice || '0',
-      gasToken: parsedData.gasToken || '0x0000000000000000000000000000000000000000',
-      refundReceiver: parsedData.refundReceiver || '0x0000000000000000000000000000000000000000',
+      gasToken: parsedData.gasToken ? parsedData.gasToken.toLowerCase() : '0x0000000000000000000000000000000000000000',
+      refundReceiver: parsedData.refundReceiver ? parsedData.refundReceiver.toLowerCase() : '0x0000000000000000000000000000000000000000',
       nonce: parsedData.nonce || '0',
       decodedData: null as { name: string; params: Record<string, string>; error?: string } | null,
       decodedTransactions: null as DecodedTransaction[] | null
@@ -502,4 +552,26 @@ export function parseSignTypedDataJson(jsonString: string): {
     console.error('Error parsing JSON:', error);
     return null;
   }
+}
+
+/**
+ * Ensures a hex string has an even number of characters (excluding the 0x prefix)
+ * @param hexString The hex string to normalize
+ * @returns A normalized hex string with even length, or '0x' if input is invalid/empty.
+ */
+export function normalizeHexString(hexString: string): string {
+  // Return early if input is not a string or is empty
+  if (!hexString || typeof hexString !== 'string') return '0x'; // Return '0x' for consistency
+  
+  // Remove 0x prefix if present
+  const withoutPrefix = hexString.startsWith('0x') ? hexString.slice(2) : hexString;
+
+  // Return '0x' if the resulting string is empty after removing prefix
+  if (!withoutPrefix) return '0x';
+  
+  // If the length is odd, add a leading zero
+  const normalized = withoutPrefix.length % 2 !== 0 ? `0${withoutPrefix}` : withoutPrefix;
+  
+  // Add the 0x prefix back
+  return `0x${normalized}`;
 } 
