@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 // Update interface to match API response keys
@@ -24,39 +24,74 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [apiPassword, setApiPassword] = useState<string | null>(null);
+  const [passwordPrompted, setPasswordPrompted] = useState(false);
+
+  const fetchTransactions = useCallback(async () => {
+    if (!apiPassword) {
+      setError("Password required to view transactions.");
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/transactions', {
+        headers: {
+          'X-Password': apiPassword,
+        },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 401) {
+          setError('Unauthorized: Incorrect password or access denied. Please refresh and try again.');
+          setApiPassword(null); // Clear password so prompt appears again on retry/refresh
+          setPasswordPrompted(false); // Allow re-prompting
+        } else {
+          setError(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+        setTransactions([]); // Clear transactions on error
+        return; // Added return to stop processing after error
+      }
+      // Assume API returns data matching the structure (with maybe some optional fields)
+      // Add txId based on index
+      const rawData: Omit<TransactionRow, 'txId'>[] = await response.json(); 
+      const processedData = rawData.map((row, index) => ({
+        ...row,
+        txId: index.toString()
+      }));
+      
+      setTransactions(processedData);
+
+    } catch (err) {
+      console.error("Error fetching transactions:", err);
+      const message = err instanceof Error ? err.message : 'Failed to load transactions.';
+      setError(message);
+      setTransactions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiPassword]); // Added apiPassword to dependency array
 
   useEffect(() => {
-    const fetchTransactions = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const response = await fetch('/api/transactions');
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        // Assume API returns data matching the structure (with maybe some optional fields)
-        // Add txId based on index
-        const rawData: Omit<TransactionRow, 'txId'>[] = await response.json(); 
-        const processedData = rawData.map((row, index) => ({
-          ...row,
-          txId: index.toString()
-        }));
-        
-        setTransactions(processedData);
-
-      } catch (err) {
-        console.error("Error fetching transactions:", err);
-        const message = err instanceof Error ? err.message : 'Failed to load transactions.';
-        setError(message);
-        setTransactions([]);
-      } finally {
-        setIsLoading(false);
+    if (!passwordPrompted && apiPassword === null) {
+      const enteredPassword = window.prompt("Please enter the password to view transactions:");
+      setPasswordPrompted(true); // Mark as prompted
+      if (enteredPassword !== null) { // User clicked OK
+        setApiPassword(enteredPassword);
+      } else { // User clicked Cancel or closed prompt
+        setError("Password entry was cancelled. Please refresh to try again.");
+        setIsLoading(false); 
       }
-    };
+    }
+  }, [passwordPrompted, apiPassword]);
 
-    fetchTransactions();
-  }, []);
+  useEffect(() => {
+    if (apiPassword !== null) { // Only fetch if password has been set
+      fetchTransactions();
+    }
+  }, [apiPassword, fetchTransactions]); // Added fetchTransactions to dependency array
 
   return (
     <div className="container mx-auto px-4 py-8">

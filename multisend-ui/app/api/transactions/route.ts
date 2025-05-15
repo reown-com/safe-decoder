@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const API_PASSWORD = process.env.TRANSACTIONS_API_PASSWORD;
 // Fetch data starting from row 7 on the correct sheet
 const RANGE = 'Transactions List!A7:Z'; // Using the correct sheet name
 
@@ -42,8 +43,38 @@ function sheetDataToJson(values: any[][]): Record<string, any>[] {
   return data;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!API_PASSWORD) {
+      console.error('TRANSACTIONS_API_PASSWORD environment variable is not set.');
+      return NextResponse.json(
+        { error: 'Server configuration error: Missing API password.' },
+        { 
+          status: 500,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        }
+      );
+    }
+
+    const providedPassword = request.headers.get('X-Password');
+    if (providedPassword !== API_PASSWORD) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { 
+          status: 401,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        }
+      );
+    }
+
     const credentialsJson = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_CREDENTIALS_JSON;
     if (!credentialsJson) {
       throw new Error('Google Sheets service account credentials JSON not found in environment variables.');
