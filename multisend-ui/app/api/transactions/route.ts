@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 
-const SPREADSHEET_ID = '1oSW35lK2ZB8Qo5uDR7_XBdr_mnp9poaZC-1ktO0M5bY';
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const API_PASSWORD = process.env.TRANSACTIONS_API_PASSWORD;
 // Fetch data starting from row 7 on the correct sheet
 const RANGE = 'Transactions List!A7:Z'; // Using the correct sheet name
 
@@ -42,11 +43,44 @@ function sheetDataToJson(values: any[][]): Record<string, any>[] {
   return data;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!API_PASSWORD) {
+      console.error('TRANSACTIONS_API_PASSWORD environment variable is not set.');
+      return NextResponse.json(
+        { error: 'Server configuration error: Missing API password.' },
+        { 
+          status: 500,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        }
+      );
+    }
+
+    const providedPassword = request.headers.get('X-Password');
+    if (providedPassword !== API_PASSWORD) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { 
+          status: 401,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        }
+      );
+    }
+
     const credentialsJson = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_CREDENTIALS_JSON;
     if (!credentialsJson) {
       throw new Error('Google Sheets service account credentials JSON not found in environment variables.');
+    }
+    if (!SPREADSHEET_ID) {
+      throw new Error('SPREADSHEET_ID not found in environment variables.');
     }
 
     const credentials = JSON.parse(credentialsJson);
@@ -74,18 +108,29 @@ export async function GET() {
     console.log("JSON data being sent to frontend:", JSON.stringify(jsonData, null, 2));
     // --- DEBUGGING END ---
 
-    return NextResponse.json(jsonData);
+    return NextResponse.json(jsonData, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
 
   } catch (error) {
     console.error('Error fetching data from Google Sheets API:', error);
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
+    const headers = {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    };
     // Provide more specific error messages if possible
     if (error instanceof Error && 'response' in error && (error as any).response?.status === 403) {
-      return NextResponse.json({ error: 'Permission denied. Ensure the service account email has viewer access to the sheet.' }, { status: 403 });
+      return NextResponse.json({ error: 'Permission denied. Ensure the service account email has viewer access to the sheet.' }, { status: 403, headers });
     }
      if (error instanceof Error && 'response' in error && (error as any).response?.status === 404) {
-      return NextResponse.json({ error: 'Sheet or range not found. Verify SPREADSHEET_ID and RANGE.' }, { status: 404 });
+      return NextResponse.json({ error: 'Sheet or range not found. Verify SPREADSHEET_ID and RANGE.' }, { status: 404, headers });
     }
-    return NextResponse.json({ error: `Google Sheets API Error: ${message}` }, { status: 500 });
+    return NextResponse.json({ error: `Google Sheets API Error: ${message}` }, { status: 500, headers });
   }
 } 
