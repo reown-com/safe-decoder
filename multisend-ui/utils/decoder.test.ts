@@ -77,6 +77,58 @@ describe('Decoder Utils', () => {
     });
   });
 
+  describe('Wormhole function signatures', () => {
+    it('should decode setPeer function correctly', () => {
+      // setPeer(uint256,bytes32,uint8,uint256) with peerChainId=30, peerContract=0x164...b, decimals=18, inboundLimit=184467440737095516150000000000
+      const setPeerData = '0x7c918634000000000000000000000000000000000000000000000000000000000000001e000000000000000000000000164be303480f542336be0bbe0432a13b85e6fd1b000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000002540be3fffffffffdabf41c00';
+
+      const decoded = tryDecodeFunctionData(setPeerData);
+
+      expect(decoded).not.toBeNull();
+      expect(decoded?.name).toBe('setPeer(uint256,bytes32,uint8,uint256)');
+      expect(decoded?.params.peerChainId).toBe('30');
+      expect(decoded?.params.peerContract).toBe('0x164be303480f542336be0bbe0432a13b85e6fd1b');
+      expect(decoded?.params.decimals).toBe('18');
+      expect(decoded?.params.inboundLimit).toContain('184467440737095516150000000000');
+    });
+
+    it('should decode setWormholePeer function correctly', () => {
+      // setWormholePeer(uint256,bytes32) with peerChainId=30, peerContract=0x3cb...68
+      const setWormholePeerData = '0x7ab56403000000000000000000000000000000000000000000000000000000000000001e0000000000000000000000003cb1d3a449a868dd8bf8f8928408836543fe2a68';
+
+      const decoded = tryDecodeFunctionData(setWormholePeerData);
+
+      expect(decoded).not.toBeNull();
+      expect(decoded?.name).toBe('setWormholePeer(uint256,bytes32)');
+      expect(decoded?.params.peerChainId).toBe('30');
+      expect(decoded?.params.peerContract).toBe('0x3cb1d3a449a868dd8bf8f8928408836543fe2a68');
+    });
+
+    it('should decode setIsWormholeEvmChain function correctly', () => {
+      // setIsWormholeEvmChain(uint256,bool) with chainId=30, isEvm=true
+      const setIsWormholeEvmChainData = '0x96dddc63000000000000000000000000000000000000000000000000000000000000001e0000000000000000000000000000000000000000000000000000000000000001';
+
+      const decoded = tryDecodeFunctionData(setIsWormholeEvmChainData);
+
+      expect(decoded).not.toBeNull();
+      expect(decoded?.name).toBe('setIsWormholeEvmChain(uint256,bool)');
+      expect(decoded?.params.chainId).toBe('30');
+      expect(decoded?.params.isEvm).toBe('true');
+    });
+
+    it('should decode setIsWormholeRelayingEnabled function correctly', () => {
+      // setIsWormholeRelayingEnabled(uint256,bool) with chainId=30, isEnabled=true
+      const setIsWormholeRelayingEnabledData = '0x657b3b2f000000000000000000000000000000000000000000000000000000000000001e0000000000000000000000000000000000000000000000000000000000000001';
+
+      const decoded = tryDecodeFunctionData(setIsWormholeRelayingEnabledData);
+
+      expect(decoded).not.toBeNull();
+      expect(decoded?.name).toBe('setIsWormholeRelayingEnabled(uint256,bool)');
+      expect(decoded?.params.chainId).toBe('30');
+      expect(decoded?.params.isEnabled).toBe('true');
+    });
+  });
+
   // Add more tests for other functions (decodeRegularFunctionCall, parseSignTypedDataJson, etc.) here
 
 }); 
