@@ -450,7 +450,111 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       };
     }
   }
-  
+
+  // setPeer function (0x7c918634)
+  if (functionSignature === '0x7c918634') {
+    try {
+      const params = data.slice(10);
+
+      // Extract parameters: peerChainId (uint256), peerContract (bytes32), decimals (uint8), inboundLimit (uint256)
+      const peerChainId = ethers.BigNumber.from('0x' + params.slice(0, 64)).toString();
+      const peerContract = '0x' + params.slice(64 + 24, 64 + 64); // Extract last 20 bytes as address
+      const decimals = ethers.BigNumber.from('0x' + params.slice(128, 192)).toString();
+      const inboundLimit = ethers.BigNumber.from('0x' + params.slice(192, 256)).toString();
+
+      return {
+        name: 'setPeer(uint256,bytes32,uint8,uint256)',
+        params: {
+          peerChainId,
+          peerContract: peerContract.toLowerCase(),
+          decimals,
+          inboundLimit: formatLargeNumber(inboundLimit)
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'setPeer(uint256,bytes32,uint8,uint256)',
+        params: {},
+        error: 'Failed to decode setPeer function parameters'
+      };
+    }
+  }
+
+  // setWormholePeer function (0x7ab56403)
+  if (functionSignature === '0x7ab56403') {
+    try {
+      const params = data.slice(10);
+
+      // Extract parameters: peerChainId (uint256), peerContract (bytes32)
+      const peerChainId = ethers.BigNumber.from('0x' + params.slice(0, 64)).toString();
+      const peerContract = '0x' + params.slice(64 + 24, 64 + 64); // Extract last 20 bytes as address
+
+      return {
+        name: 'setWormholePeer(uint256,bytes32)',
+        params: {
+          peerChainId,
+          peerContract: peerContract.toLowerCase()
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'setWormholePeer(uint256,bytes32)',
+        params: {},
+        error: 'Failed to decode setWormholePeer function parameters'
+      };
+    }
+  }
+
+  // setIsWormholeEvmChain function (0x96dddc63)
+  if (functionSignature === '0x96dddc63') {
+    try {
+      const params = data.slice(10);
+
+      // Extract parameters: chainId (uint256), isEvm (bool)
+      const chainId = ethers.BigNumber.from('0x' + params.slice(0, 64)).toString();
+      const isEvm = ethers.BigNumber.from('0x' + params.slice(64, 128)).toString() === '1';
+
+      return {
+        name: 'setIsWormholeEvmChain(uint256,bool)',
+        params: {
+          chainId,
+          isEvm: isEvm.toString()
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'setIsWormholeEvmChain(uint256,bool)',
+        params: {},
+        error: 'Failed to decode setIsWormholeEvmChain function parameters'
+      };
+    }
+  }
+
+  // setIsWormholeRelayingEnabled function (0x657b3b2f)
+  if (functionSignature === '0x657b3b2f') {
+    try {
+      const params = data.slice(10);
+
+      // Extract parameters: chainId (uint256), isEnabled (bool)
+      const chainId = ethers.BigNumber.from('0x' + params.slice(0, 64)).toString();
+      const isEnabled = ethers.BigNumber.from('0x' + params.slice(64, 128)).toString() === '1';
+
+      return {
+        name: 'setIsWormholeRelayingEnabled(uint256,bool)',
+        params: {
+          chainId,
+          isEnabled: isEnabled.toString()
+        }
+      };
+    } catch (error) {
+      return {
+        name: 'setIsWormholeRelayingEnabled(uint256,bool)',
+        params: {},
+        error: 'Failed to decode setIsWormholeRelayingEnabled function parameters'
+      };
+    }
+  }
+
   // If we can't decode the function, return the function signature
   return {
     name: `Unknown Function (${functionSignature})`,
