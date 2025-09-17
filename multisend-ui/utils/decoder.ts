@@ -16,7 +16,12 @@ const openChainResolvedCache = new Map<string, string[]>();
 async function fetchOpenChainFunctionSignatures(selector: string): Promise<string[]> {
   const normalized = selector.toLowerCase();
   if (openChainResolvedCache.has(normalized)) {
-    return openChainResolvedCache.get(normalized) as string[];
+    const cached = openChainResolvedCache.get(normalized);
+    if (cached !== undefined) {
+      return cached;
+    }
+    // Unexpected, but keep behavior predictable.
+    return [];
   }
 
   if (!openChainSignatureCache.has(normalized)) {
@@ -48,7 +53,12 @@ async function fetchOpenChainFunctionSignatures(selector: string): Promise<strin
     openChainSignatureCache.set(normalized, lookupPromise);
   }
 
-  return openChainSignatureCache.get(normalized) as Promise<string[]>;
+  const pending = openChainSignatureCache.get(normalized);
+  if (!pending) {
+    // Shouldn't happen because we just guarded above; treat as cache miss.
+    return [];
+  }
+  return pending;
 }
 
 function formatDecodedValue(value: unknown): string {
