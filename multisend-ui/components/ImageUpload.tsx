@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 
 interface ImageUploadProps {
-  onImageProcessed: (data: any) => void;
+  onImageProcessed: (data: any) => Promise<void> | void;
   isLoading: boolean;
   setIsLoading?: (loading: boolean) => void;
   buttonText?: string;
@@ -47,7 +47,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       const data = await response.json();
       
       if (response.ok) {
-        onImageProcessed(data);
+        await onImageProcessed(data);
       } else {
         console.error('Error extracting JSON:', data.error);
       }
@@ -59,7 +59,9 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
         setTimeout(() => {
           // Give the parent component time to process the data
           // before resetting the loading state
-          onImageProcessed({ _resetLoading: true });
+          Promise.resolve(onImageProcessed({ _resetLoading: true })).catch(err => {
+            console.error('Failed to reset loading state after image processing:', err);
+          });
         }, 500);
       }
     }

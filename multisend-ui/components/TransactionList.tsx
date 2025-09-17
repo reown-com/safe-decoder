@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { DecodedTransaction, getOperationName, formatValue, tryDecodeFunctionData } from '@/utils/decoder';
+import React, { useEffect, useState } from 'react';
+import { DecodedTransaction, getOperationName, formatValue, tryDecodeFunctionData, DecodedFunctionData } from '@/utils/decoder';
 
 interface TransactionListProps {
   transactions: DecodedTransaction[];
@@ -7,6 +7,28 @@ interface TransactionListProps {
 
 const TransactionList: React.FC<TransactionListProps> = ({ transactions }) => {
   const [expandedData, setExpandedData] = useState<Record<number, boolean>>({});
+  const [decodedFunctions, setDecodedFunctions] = useState<Array<DecodedFunctionData | null>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function decodeAll() {
+      try {
+        const results = await Promise.all(transactions.map(tx => tryDecodeFunctionData(tx.data)));
+        if (!cancelled) {
+          setDecodedFunctions(results);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to decode transaction functions:', error);
+          setDecodedFunctions(transactions.map(() => null));
+        }
+      }
+    }
+    decodeAll();
+    return () => {
+      cancelled = true;
+    };
+  }, [transactions]);
 
   if (transactions.length === 0) {
     return <div className="text-center py-8">No transactions to display</div>;
@@ -23,7 +45,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions }) => {
     <div className="space-y-4">
       <h2 className="text-xl font-semibold mb-4">Transaction List</h2>
       {transactions.map((tx, index) => {
-        const decodedFunction = tryDecodeFunctionData(tx.data);
+        const decodedFunction = decodedFunctions[index] || null;
         const isExpanded = expandedData[index] || false;
         
         return (
@@ -70,6 +92,12 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions }) => {
                   <div className="font-medium text-blue-700">
                     Function: {decodedFunction.name}
                   </div>
+
+                  {decodedFunction.source === 'openchain' && decodedFunction.candidates && decodedFunction.candidates.length > 1 && (
+                    <div className="mt-1 text-xs text-blue-600">
+                      Possible matches: {decodedFunction.candidates.filter(candidate => candidate !== decodedFunction.name).join(', ')}
+                    </div>
+                  )}
                   
                   {decodedFunction.error ? (
                     <div className="mt-1 text-red-600">

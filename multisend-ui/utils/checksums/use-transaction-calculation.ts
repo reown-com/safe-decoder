@@ -5,7 +5,6 @@ import { NETWORKS } from "./constants";
 import { calculateHashes } from "./safeHashesCalculator";
 import { fetchTransactionDataFromApi } from "./api";
 import { FormData, CalculationResult, TransactionParams } from "@/types/checksums";
-import { decodeTransactionData } from "@/utils/decoder";
 import { parseSafeAddressInput } from "./safeAddressParser";
 
 // Helper function to find network configuration based on various inputs

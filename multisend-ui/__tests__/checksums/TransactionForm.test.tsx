@@ -46,8 +46,11 @@ jest.mock('@/components/ImageUpload', () => {
 });
 
 // Mock the decoder utility
-jest.mock('@/utils/decoder', () => ({
-  tryDecodeFunctionData: jest.fn((data) => {
+jest.mock('@/utils/decoder', () => {
+  const actual = jest.requireActual('@/utils/decoder');
+  return {
+    ...actual,
+    tryDecodeFunctionData: jest.fn(async (data: string) => {
     if (data === '0x1e83409a000000000000000000000000073eaa4947cf98b7cc3042e11128703207ec5a6f2') {
       return {
         name: 'testFunction(address)',
@@ -75,9 +78,9 @@ jest.mock('@/utils/decoder', () => ({
         }
       };
     }
-    return null;
-  }),
-  decodeTransactionData: jest.fn((data) => {
+      return null;
+    }),
+    decodeTransactionData: jest.fn(async (data: string) => {
     if (data === '0x00ef4461891dfb3ac8572ccf7c794664a8dd92794500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000f368f535e329c6d08dff0d4b2da961c4e7f3fcaf000000000000000000000000000000000000000000000599223bbba52fcbf4a100f368f535e329c6d08dff0d4b2da961c4e7f3fcaf00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044097cd2320000000000000000000000000000000000000000000000000000000067bfab00000000000000000000000000000000000000000000000599223bbba52fcbf4a1') {
       return [
         {
@@ -117,9 +120,10 @@ jest.mock('@/utils/decoder', () => ({
         }
       ];
     }
-    return [];
-  })
-}));
+      return [];
+    })
+  };
+});
 
 // Create a wrapper component to provide the form context
 const FormWrapper = ({ 
@@ -279,9 +283,9 @@ describe('TransactionForm', () => {
     expect(mockSetValue).toHaveBeenCalledWith('value', '100');
   });
 
-  it('displays decoded multisend data with nested function calls', () => {
+  it('displays decoded multisend data with nested function calls', async () => {
     // Create a simplified mock for decodeTransactionData
-    const mockDecodeTransactionData = jest.fn().mockReturnValue([
+    const mockDecodeTransactionData = jest.fn().mockResolvedValue([
       {
         operation: 0,
         to: '0xef4461891dfb3ac8572ccf7c794664a8dd927945',
@@ -295,7 +299,7 @@ describe('TransactionForm', () => {
     (decodeTransactionData as jest.Mock).mockImplementation(mockDecodeTransactionData);
     
     // Create a simplified mock for tryDecodeFunctionData
-    (tryDecodeFunctionData as jest.Mock).mockImplementation((data) => {
+    (tryDecodeFunctionData as jest.Mock).mockImplementation(async (data) => {
       return {
         name: 'approve(address,uint256)',
         params: {
@@ -334,7 +338,7 @@ describe('TransactionForm', () => {
     
     // We're just verifying that the component renders without errors
     // The actual decoding functionality is tested in decoder.test.ts
-    expect(decodeTransactionData).toHaveBeenCalled();
+    await waitFor(() => expect(decodeTransactionData).toHaveBeenCalled());
   });
 
   it('shows Safe Global link only when address is provided', () => {
