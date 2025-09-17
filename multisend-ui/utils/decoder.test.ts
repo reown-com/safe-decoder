@@ -129,6 +129,23 @@ describe('Decoder Utils', () => {
     });
   });
 
+  describe('swapOwner function signature', () => {
+    it('should decode swapOwner function correctly', () => {
+      // swapOwner(address,address,address) on eth:0x398A2749487B2a91f2f543C01F7afD19AEE4b6b0
+      // with prevOwner:0x0000000000000000000000000000000000000001, oldOwner:0x76D7F45B4cecB0745e05fE913b53c7e1764904f8, newOwner:0x4FB41681ecC4594DA6f6172e6c913B1831797d3D
+      const swapOwnerData = '0xe318b52b000000000000000000000000000000000000000000000000000000000000000100000000000000000000000076d7f45b4cecb0745e05fe913b53c7e1764904f80000000000000000000000004fb41681ecc4594da6f6172e6c913b1831797d3d';
+
+      const decoded = tryDecodeFunctionData(swapOwnerData);
+
+      expect(decoded).not.toBeNull();
+      expect(decoded?.name).toBe('swapOwner(address,address,address)');
+      expect(decoded?.params.prevOwner).toBe('0x0000000000000000000000000000000000000001');
+      expect(decoded?.params.oldOwner).toBe('0x76d7f45b4cecb0745e05fe913b53c7e1764904f8');
+      expect(decoded?.params.newOwner).toBe('0x4fb41681ecc4594da6f6172e6c913b1831797d3d');
+      expect(decoded?.error).toBeUndefined();
+    });
+  });
+
   // Add more tests for other functions (decodeRegularFunctionCall, parseSignTypedDataJson, etc.) here
 
 }); 
