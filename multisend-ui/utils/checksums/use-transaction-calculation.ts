@@ -5,7 +5,7 @@ import { NETWORKS } from "./constants";
 import { calculateHashes } from "./safeHashesCalculator";
 import { fetchTransactionDataFromApi } from "./api";
 import { FormData, CalculationResult, TransactionParams } from "@/types/checksums";
-import { decodeTransactionData } from "@/utils/decoder";
+import { tryDecodeFunctionData, normalizeHexString } from "@/utils/decoder";
 import { parseSafeAddressInput } from "./safeAddressParser";
 
 // Helper function to find network configuration based on various inputs
@@ -35,6 +35,11 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
   const [calculationRequested, setCalculationRequested] = useState(false);
   const initialParamsLoaded = useRef(false); 
   const [isApiFetching, setIsApiFetching] = useState(false);
+  const latestFetchedTransaction = useRef<TransactionParams | null>(null);
+
+  type DataDecoded = NonNullable<CalculationResult['transaction']> extends { data_decoded?: infer D }
+    ? NonNullable<D>
+    : never;
 
   // --- Parameter Extraction Logic (Revised) ---
   const networkParam = searchParams.get("network");
@@ -112,6 +117,7 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
         data.nonce
       );
       console.log("Fetched txParams:", txParams);
+      latestFetchedTransaction.current = txParams;
       // Update form fields after fetch
       form.setValue("to", txParams.to);
       form.setValue("value", txParams.value);
@@ -130,6 +136,7 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
       console.error("API Fetch Error:", error);
       apiError = error.message || "Failed to fetch data from Safe Service.";
       if (apiError) form.setError("apiError", { type: "manual", message: apiError });
+      latestFetchedTransaction.current = null;
     } finally {
       setIsApiFetching(false);
     }
@@ -157,9 +164,47 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
           refundReceiver: data.refundReceiver,
           nonce: data.nonce,
           version: data.version, 
-          dataDecoded: null // We don't have dataDecoded unless API was called before
+          dataDecoded: null as DataDecoded | null
       }; 
       console.log("Calculating hashes with:", paramsToUse);
+
+      const normalizedData = normalizeHexString(paramsToUse.data || '0x');
+      let decodedSummary: DataDecoded | null = null;
+
+      const fetchedTx = latestFetchedTransaction.current as (TransactionParams & { dataDecoded?: DataDecoded }) | null;
+      if (
+        fetchedTx &&
+        normalizeHexString(fetchedTx.data || '0x') === normalizedData &&
+        fetchedTx.dataDecoded
+      ) {
+        decodedSummary = fetchedTx.dataDecoded as DataDecoded;
+      }
+
+      if (!decodedSummary && normalizedData !== '0x') {
+        try {
+          const decoded = await tryDecodeFunctionData(normalizedData);
+          if (decoded) {
+            const mappedParams = Object.entries(decoded.params).map(([name, value]) => ({
+              name,
+              value,
+              type: typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value) ? 'address' : undefined
+            }));
+            decodedSummary = {
+              method: decoded.name,
+              signature: decoded.candidates?.[0] || decoded.name,
+              source: decoded.source as "manual" | "openchain" | undefined,
+              candidates: decoded.candidates,
+              parameters: mappedParams
+            };
+          }
+        } catch (error) {
+          console.error('Failed to decode data during hash calculation:', error);
+        }
+      }
+
+      if (decodedSummary) {
+        paramsToUse.dataDecoded = decodedSummary;
+      }
       const { domainHash, messageHash, safeTxHash, encodedMessage } = await calculateHashes(
         data.chainId.toString(),
         data.address,

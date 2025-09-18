@@ -32,7 +32,9 @@ export interface CalculationResult {
     data_decoded?: {
       method: string;
       signature?: string;
-      parameters: any[];
+      source?: string;
+      candidates?: string[];
+      parameters: { name: string; type?: string; value: string }[];
     };
     exec_transaction?: {
       encoded: string;

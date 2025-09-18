@@ -1,5 +1,161 @@
 import { ethers } from 'ethers';
 
+export interface DecodedFunctionData {
+  name: string;
+  params: Record<string, string>;
+  error?: string;
+  source?: 'manual' | 'openchain';
+  candidates?: string[];
+}
+
+const openChainSignatureCache = new Map<string, Promise<string[]>>();
+const openChainResolvedCache = new Map<string, string[]>();
+
+// Regex patterns compiled once for performance
+const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+
+function buildOpenChainApiPath(normalizedSelector: string): string {
+  const encodedSelector = encodeURIComponent(normalizedSelector);
+  if (typeof window !== 'undefined') {
+    return `/api/openchain?function=${encodedSelector}`;
+  }
+
+  const baseUrl =
+    process.env.OPENCHAIN_PROXY_BASE_URL ||
+    process.env.NEXT_PUBLIC_OPENCHAIN_PROXY_BASE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    process.env.SITE_URL ||
+    'http://localhost:3000';
+
+  const trimmed = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  return `${trimmed}/api/openchain?function=${encodedSelector}`;
+}
+
+async function fetchOpenChainFunctionSignatures(selector: string): Promise<string[]> {
+  const normalized = selector.toLowerCase();
+  if (openChainResolvedCache.has(normalized)) {
+    return openChainResolvedCache.get(normalized)!;
+  }
+
+  if (!openChainSignatureCache.has(normalized)) {
+    const lookupPromise = (async () => {
+      try {
+        const requestUrl = buildOpenChainApiPath(normalized);
+        const response = await fetch(requestUrl, {
+          headers: {
+            accept: 'application/json'
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`OpenChain responded with status ${response.status}`);
+        }
+        const data = await response.json();
+        const functionResults = data?.result?.function;
+        let entries: unknown = [];
+        if (functionResults && typeof functionResults === 'object') {
+          const matchedKey = Object.keys(functionResults).find(key => key.toLowerCase() === normalized);
+          if (matchedKey) {
+            entries = (functionResults as Record<string, unknown>)[matchedKey];
+          }
+        }
+        const signatures = Array.isArray(entries)
+          ? entries
+              .map((entry: { name?: unknown; signature?: unknown; text_signature?: unknown }) => {
+                if (typeof entry?.name === 'string' && entry.name.trim().length > 0) {
+                  return entry.name;
+                }
+                if (typeof entry?.signature === 'string' && entry.signature.trim().length > 0) {
+                  return entry.signature;
+                }
+                if (typeof entry?.text_signature === 'string' && entry.text_signature.trim().length > 0) {
+                  return entry.text_signature;
+                }
+                return null;
+              })
+              .filter((entry: string | null): entry is string => Boolean(entry))
+          : [];
+        const uniqueSignatures = Array.from(new Set(signatures));
+        openChainResolvedCache.set(normalized, uniqueSignatures);
+        return uniqueSignatures;
+      } catch (error) {
+        console.error('Failed to fetch OpenChain signatures:', error);
+        openChainResolvedCache.set(normalized, []);
+        return [];
+      } finally {
+        openChainSignatureCache.delete(normalized);
+      }
+    })();
+    openChainSignatureCache.set(normalized, lookupPromise);
+  }
+
+  const pending = openChainSignatureCache.get(normalized);
+  if (!pending) {
+    // Shouldn't happen because we just guarded above; treat as cache miss.
+    return [];
+  }
+  return pending;
+}
+
+function formatDecodedValue(value: unknown): string {
+  if (ethers.BigNumber.isBigNumber(value)) {
+    return value.toString();
+  }
+  if (typeof value === 'boolean') {
+    return value.toString();
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(item => formatDecodedValue(item)).join(', ')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'string') {
+    // Normalize address casing if it looks like an address
+    if (ADDRESS_PATTERN.test(value)) {
+      return value.toLowerCase();
+    }
+    return value;
+  }
+  return String(value ?? '');
+}
+
+function manualResult(result: DecodedFunctionData): DecodedFunctionData {
+  return {
+    source: 'manual',
+    ...result
+  };
+}
+
+function openChainResult(result: DecodedFunctionData, candidates: string[]): DecodedFunctionData {
+  return {
+    source: 'openchain',
+    candidates,
+    ...result
+  };
+}
+
+function tryDecodeUsingSignature(signature: string, data: string): DecodedFunctionData | null {
+  try {
+    const fragment = `function ${signature}`;
+    const iface = new ethers.utils.Interface([fragment]);
+    const functionFragment = iface.getFunction(signature);
+    const decoded = iface.decodeFunctionData(functionFragment, data);
+    const params: Record<string, string> = {};
+    functionFragment.inputs.forEach((input, index) => {
+      const key = input.name && input.name.trim().length > 0 ? input.name : `arg${index}`;
+      params[key] = formatDecodedValue(decoded[index]);
+    });
+    return {
+      name: signature,
+      params
+    };
+  } catch (error) {
+    console.warn(`Failed to decode using OpenChain signature ${signature}:`, error);
+    return null;
+  }
+}
+
 /**
  * Represents a decoded transaction from a multisend call
  */
@@ -118,7 +274,7 @@ export function decodeRegularFunctionCall(data: string): DecodedTransaction[] {
  * @param data The transaction data hex string.
  * @returns An array of decoded transactions.
  */
-export function decodeTransactionData(data: string): DecodedTransaction[] {
+export async function decodeTransactionData(data: string): Promise<DecodedTransaction[]> {
   const normalizedData = normalizeHexString(data);
 
   if (normalizedData === '0x') {
@@ -128,7 +284,7 @@ export function decodeTransactionData(data: string): DecodedTransaction[] {
   // 1. Check for the multiSend(bytes) signature (0x8d80ff0a)
   if (normalizedData.startsWith('0x8d80ff0a')) {
     try {
-      const decodedOuter = tryDecodeFunctionData(normalizedData);
+      const decodedOuter = await tryDecodeFunctionData(normalizedData);
       if (decodedOuter && decodedOuter.name === 'multiSend(bytes)' && decodedOuter.params.transactions) {
         // Successfully decoded the outer call, now decode the inner transactions payload
         const innerTransactionsData = '0x' + decodedOuter.params.transactions;
@@ -218,7 +374,7 @@ export function formatLargeNumber(value: string): string {
  * @param data - The function call data
  * @returns An object with decoded parameters if successful, or null if not recognized
  */
-export function tryDecodeFunctionData(data: string): { name: string; params: Record<string, string>; error?: string } | null {
+export async function tryDecodeFunctionData(data: string): Promise<DecodedFunctionData | null> {
   if (!data || data === '0x') return null;
   
   // Get the function signature (first 4 bytes / 8 hex chars after 0x)
@@ -273,20 +429,20 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
         console.warn('Could not decode inner transactions within multiSend for count:', decodeError);
       }
       
-      return {
+      return manualResult({
         name: 'multiSend(bytes)',
         params: {
           transactions: transactionsData,
           decodedTransactionsCount: decodedTransactions.length.toString()
         }
-      };
+      });
     } catch (error) {
       console.error("Error decoding multiSend(bytes) parameters:", error);
-      return {
+      return manualResult({
         name: 'multiSend(bytes)',
         params: {},
         error: 'Failed to decode multiSend function parameters: ' + (error instanceof Error ? error.message : String(error))
-      };
+      });
     }
   }
   
@@ -299,20 +455,20 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const decoded = iface.decodeFunctionData('approve', data);
       // Ensure spender address is lowercase
       const spenderAddress = decoded.spender ? decoded.spender.toLowerCase() : '0x0000000000000000000000000000000000000000';
-      return {
+      return manualResult({
         name: 'approve(address,uint256)',
         params: {
           spender: spenderAddress, // Use lowercased address
           amount: decoded.amount.toString()
         }
-      };
+      });
     } catch (error) {
       console.error("Error decoding approve(address,uint256) parameters:", error);
-      return {
+      return manualResult({
         name: 'approve(address,uint256)',
         params: {},
         error: 'Failed to decode approve function parameters: ' + (error instanceof Error ? error.message : String(error))
-      };
+      });
     }
   }
   
@@ -323,19 +479,19 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
         'function setAllowedFrom(address from, bool allowed) external'
       ]);
       const decoded = iface.decodeFunctionData('setAllowedFrom', data);
-      return {
+      return manualResult({
         name: 'setAllowedFrom(address,bool)',
         params: {
           from: decoded.from.toLowerCase(),
           allowed: decoded.allowed.toString()
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'setAllowedFrom(address,bool)',
         params: {},
         error: 'Failed to decode setAllowedFrom function parameters'
-      };
+      });
     }
   }
   
@@ -353,19 +509,19 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const timestampBN = ethers.BigNumber.from('0x' + timestamp);
       const amountBN = ethers.BigNumber.from('0x' + amount);
       
-      return {
+      return manualResult({
         name: 'injectReward(uint256,uint256)',
         params: {
           timestamp: formatLargeNumber(timestampBN.toString()),
           amount: formatLargeNumber(amountBN.toString())
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'injectReward(uint256,uint256)',
         params: {},
         error: 'Failed to decode injectReward function parameters'
-      };
+      });
     }
   }
   
@@ -384,19 +540,19 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const amountHex = params.slice(64, 128);
       const amount = ethers.BigNumber.from('0x' + amountHex).toString();
       
-      return {
+      return manualResult({
         name: 'transfer(address,uint256)',
         params: {
           recipient: recipient.toLowerCase(),
           amount: amount
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'transfer(address,uint256)',
         params: {},
         error: 'Failed to decode transfer function parameters'
-      };
+      });
     }
   }
   
@@ -408,18 +564,18 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       ]);
       const decoded = iface.decodeFunctionData('claim', data);
       const account = (decoded.account || decoded[0]).toLowerCase();
-      return {
+      return manualResult({
         name: 'claim(address)',
         params: {
           account: account
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'claim(address)',
         params: {},
         error: 'Failed to decode claim function parameters'
-      };
+      });
     }
   }
   
@@ -434,20 +590,20 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const oldOwner = '0x' + params.slice(64 + 24, 64 + 64); // Extract the last 20 bytes of the second parameter
       const newOwner = '0x' + params.slice(128 + 24, 128 + 64); // Extract the last 20 bytes of the third parameter
       
-      return {
+      return manualResult({
         name: 'swapOwner(address,address,address)',
         params: {
           prevOwner: prevOwner.toLowerCase(),
           oldOwner: oldOwner.toLowerCase(),
           newOwner: newOwner.toLowerCase()
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'swapOwner(address,address,address)',
         params: {},
         error: 'Failed to decode swapOwner function parameters'
-      };
+      });
     }
   }
 
@@ -462,7 +618,7 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const decimals = ethers.BigNumber.from('0x' + params.slice(128, 192)).toString();
       const inboundLimit = ethers.BigNumber.from('0x' + params.slice(192, 256)).toString();
 
-      return {
+      return manualResult({
         name: 'setPeer(uint256,bytes32,uint8,uint256)',
         params: {
           peerChainId,
@@ -470,13 +626,13 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
           decimals,
           inboundLimit: formatLargeNumber(inboundLimit)
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'setPeer(uint256,bytes32,uint8,uint256)',
         params: {},
         error: 'Failed to decode setPeer function parameters'
-      };
+      });
     }
   }
 
@@ -489,19 +645,19 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const peerChainId = ethers.BigNumber.from('0x' + params.slice(0, 64)).toString();
       const peerContract = '0x' + params.slice(64 + 24, 64 + 64); // Extract last 20 bytes as address
 
-      return {
+      return manualResult({
         name: 'setWormholePeer(uint256,bytes32)',
         params: {
           peerChainId,
           peerContract: peerContract.toLowerCase()
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'setWormholePeer(uint256,bytes32)',
         params: {},
         error: 'Failed to decode setWormholePeer function parameters'
-      };
+      });
     }
   }
 
@@ -514,19 +670,19 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const chainId = ethers.BigNumber.from('0x' + params.slice(0, 64)).toString();
       const isEvm = ethers.BigNumber.from('0x' + params.slice(64, 128)).toString() === '1';
 
-      return {
+      return manualResult({
         name: 'setIsWormholeEvmChain(uint256,bool)',
         params: {
           chainId,
           isEvm: isEvm.toString()
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'setIsWormholeEvmChain(uint256,bool)',
         params: {},
         error: 'Failed to decode setIsWormholeEvmChain function parameters'
-      };
+      });
     }
   }
 
@@ -539,23 +695,52 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
       const chainId = ethers.BigNumber.from('0x' + params.slice(0, 64)).toString();
       const isEnabled = ethers.BigNumber.from('0x' + params.slice(64, 128)).toString() === '1';
 
-      return {
+      return manualResult({
         name: 'setIsWormholeRelayingEnabled(uint256,bool)',
         params: {
           chainId,
           isEnabled: isEnabled.toString()
         }
-      };
+      });
     } catch (error) {
-      return {
+      return manualResult({
         name: 'setIsWormholeRelayingEnabled(uint256,bool)',
         params: {},
         error: 'Failed to decode setIsWormholeRelayingEnabled function parameters'
-      };
+      });
     }
   }
 
-  // If we can't decode the function, return the function signature
+  try {
+    const openChainSignatures = await fetchOpenChainFunctionSignatures(functionSignature);
+    if (openChainSignatures.length > 0) {
+      for (const signature of openChainSignatures) {
+        const decoded = tryDecodeUsingSignature(signature, data);
+        if (decoded) {
+          return openChainResult(decoded, openChainSignatures);
+        }
+      }
+      return openChainResult(
+        {
+          name: openChainSignatures[0],
+          params: {},
+          error: 'Failed to decode using OpenChain signature candidates'
+        },
+        openChainSignatures
+      );
+    }
+  } catch (error) {
+    console.error('OpenChain selector lookup failed:', error);
+    return {
+      name: `Unknown Function (${functionSignature})`,
+      params: {
+        rawData: data
+      },
+      error: error instanceof Error ? `OpenChain lookup failed: ${error.message}` : 'OpenChain lookup failed'
+    };
+  }
+
+  // If OpenChain returns no data, fall back to returning the raw selector
   return {
     name: `Unknown Function (${functionSignature})`,
     params: {
@@ -575,7 +760,7 @@ export function tryDecodeFunctionData(data: string): { name: string; params: Rec
  * 3. It then extracts the transactions from the ABI-encoded parameters
  * 4. Finally, it decodes the transactions using decodeMultiSendTransactions
  */
-export function parseSignTypedDataJson(jsonString: string): { 
+export async function parseSignTypedDataJson(jsonString: string): Promise<{ 
   to: string; 
   value: string; 
   data: string; 
@@ -586,9 +771,9 @@ export function parseSignTypedDataJson(jsonString: string): {
   gasToken: string; 
   refundReceiver: string; 
   nonce: string;
-  decodedData: { name: string; params: Record<string, string>; error?: string } | null;
+  decodedData: DecodedFunctionData | null;
   decodedTransactions: DecodedTransaction[] | null;
-} | null {
+} | null> {
   try {
     // Parse the JSON string
     const parsedData = JSON.parse(jsonString);
@@ -611,7 +796,7 @@ export function parseSignTypedDataJson(jsonString: string): {
       gasToken: parsedData.gasToken ? parsedData.gasToken.toLowerCase() : '0x0000000000000000000000000000000000000000',
       refundReceiver: parsedData.refundReceiver ? parsedData.refundReceiver.toLowerCase() : '0x0000000000000000000000000000000000000000',
       nonce: parsedData.nonce || '0',
-      decodedData: null as { name: string; params: Record<string, string>; error?: string } | null,
+      decodedData: null as DecodedFunctionData | null,
       decodedTransactions: null as DecodedTransaction[] | null
     };
     
@@ -622,7 +807,7 @@ export function parseSignTypedDataJson(jsonString: string): {
       // Check if this is a multiSend function call
       if (normalizedData.startsWith('0x8d80ff0a')) {
         // This is a multiSend function call
-        result.decodedData = tryDecodeFunctionData(normalizedData);
+        result.decodedData = await tryDecodeFunctionData(normalizedData);
         
         // If we have decoded the multiSend function, try to extract the transactions
         if (result.decodedData && result.decodedData.params.transactions) {
@@ -637,13 +822,13 @@ export function parseSignTypedDataJson(jsonString: string): {
       } else {
         // Not a multiSend function call, try normal decoding
         try {
-          const transactions = decodeTransactionData(normalizedData);
+          const transactions = await decodeTransactionData(normalizedData);
           if (transactions.length > 1) {
             // It's a multisend transaction
             result.decodedTransactions = transactions;
           } else {
             // Try to decode as a regular function call
-            result.decodedData = tryDecodeFunctionData(normalizedData);
+            result.decodedData = await tryDecodeFunctionData(normalizedData);
           }
         } catch (error) {
           console.error('Error decoding data:', error);
@@ -679,3 +864,10 @@ export function normalizeHexString(hexString: string): string {
   // Add the 0x prefix back
   return `0x${normalized}`;
 } 
+
+export const __testing__ = {
+  clearOpenChainCaches(): void {
+    openChainSignatureCache.clear();
+    openChainResolvedCache.clear();
+  }
+};

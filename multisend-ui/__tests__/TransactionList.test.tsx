@@ -10,7 +10,7 @@ jest.mock('@/utils/decoder', () => {
   const originalModule = jest.requireActual('@/utils/decoder');
   return {
     ...originalModule,
-    tryDecodeFunctionData: jest.fn((data: string) => {
+    tryDecodeFunctionData: jest.fn(async (data: string) => {
       if (data.startsWith('0x095ea7b3')) {
         return {
           name: 'approve(address,uint256)',
@@ -114,24 +114,24 @@ describe('TransactionList', () => {
     expect(screen.getByText('No transactions to display')).toBeInTheDocument();
   });
 
-  it('displays decoded function information', () => {
+  it('displays decoded function information', async () => {
     render(<TransactionList transactions={mockTransactions} />);
     
     // Check that the approve function is decoded correctly
-    expect(screen.getByText('Function: approve(address,uint256)')).toBeInTheDocument();
+    expect(await screen.findByText('Function: approve(address,uint256)')).toBeInTheDocument();
     
     // Check that the injectReward function is decoded correctly
-    expect(screen.getByText('Function: injectReward(uint256,uint256)')).toBeInTheDocument();
+    expect(await screen.findByText('Function: injectReward(uint256,uint256)')).toBeInTheDocument();
     
     // Check for parameter labels (using getAllByText since they appear multiple times)
-    const timestampLabels = screen.getAllByText(/timestamp/i);
+    const timestampLabels = await screen.findAllByText(/timestamp/i);
     expect(timestampLabels.length).toBeGreaterThan(0);
     
-    const amountLabels = screen.getAllByText(/amount/i);
+    const amountLabels = await screen.findAllByText(/amount/i);
     expect(amountLabels.length).toBeGreaterThan(0);
   });
 
-  it('displays error message when function decoding fails', () => {
+  it('displays error message when function decoding fails', async () => {
     // Create a new mock implementation for this test
     const errorMockTransactions: DecodedTransaction[] = [
       {
@@ -144,7 +144,7 @@ describe('TransactionList', () => {
     ];
     
     // Override the mock for this specific test
-    (decoderUtils.tryDecodeFunctionData as jest.Mock).mockReturnValueOnce({
+    (decoderUtils.tryDecodeFunctionData as jest.Mock).mockResolvedValueOnce({
       name: 'injectReward(uint256,uint256)',
       params: {},
       error: 'Failed to decode injectReward function parameters'
@@ -153,6 +153,6 @@ describe('TransactionList', () => {
     render(<TransactionList transactions={errorMockTransactions} />);
     
     // Check that the error message is displayed
-    expect(screen.getByText(/Failed to decode injectReward function parameters/)).toBeInTheDocument();
+    expect(await screen.findByText(/Failed to decode injectReward function parameters/)).toBeInTheDocument();
   });
 }); 

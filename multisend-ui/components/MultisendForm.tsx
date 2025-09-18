@@ -1,7 +1,7 @@
 import React, { useState, useEffect, forwardRef } from 'react';
 
 interface MultisendFormProps {
-  onParse: (data: string) => void;
+  onParse: (data: string) => Promise<void> | void;
   inputData?: string;
 }
 
@@ -15,7 +15,12 @@ const MultisendForm = forwardRef<HTMLFormElement, MultisendFormProps>(({ onParse
       setInput(inputData);
       // Automatically submit the form when data is received from screenshot
       if (inputData.trim()) {
-        onParse(inputData);
+        const result = onParse(inputData);
+        if (result && typeof (result as Promise<void>).then === 'function') {
+          (result as Promise<void>).catch(error => {
+            console.error('Failed to parse preset transaction data:', error);
+          });
+        }
       }
     }
   }, [inputData, onParse]);
@@ -42,7 +47,17 @@ const MultisendForm = forwardRef<HTMLFormElement, MultisendFormProps>(({ onParse
       return;
     }
 
-    onParse(input);
+    try {
+      const result = onParse(input);
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        (result as Promise<void>).catch(error => {
+          console.error('Failed to parse transaction data from form submission:', error);
+        });
+      }
+    } catch (err) {
+      console.error('Error while parsing transaction data:', err);
+      setError('Failed to parse transaction data');
+    }
   };
 
   const handleTryMultisendExample = () => {

@@ -17,6 +17,8 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
     );
   }
 
+  const decodedData = result.transaction?.data_decoded;
+
   return (
     <div className="space-y-6">
       {/* Network Info */}
@@ -55,16 +57,27 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
                 {result.transaction.data}
               </div>
             </div>
-            {result.transaction.data_decoded && (
+            {decodedData && (
               <div className="grid grid-cols-1 gap-1">
                 <div className="text-gray-500">Data Decoded:</div>
                 <div className="font-mono">
-                  Method: {result.transaction.data_decoded.method}
-                  {result.transaction.data_decoded.parameters && result.transaction.data_decoded.parameters.length > 0 && (
+                  <div>Method: {decodedData.method}</div>
+                  {decodedData.signature && (
+                    <div className="text-xs text-gray-500">Signature: {decodedData.signature}</div>
+                  )}
+                  {decodedData.source && (
+                    <div className="text-xs text-gray-500">Source: {decodedData.source}</div>
+                  )}
+                  {decodedData.candidates && decodedData.candidates.length > 1 && (
+                    <div className="text-xs text-blue-600">
+                      Other matches: {decodedData.candidates.filter(candidate => candidate !== decodedData.method).join(', ')}
+                    </div>
+                  )}
+                  {decodedData.parameters && decodedData.parameters.length > 0 && (
                     <div className="mt-2">
                       <div className="text-gray-500">Parameters:</div>
                       <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
-                        {JSON.stringify(result.transaction.data_decoded.parameters, null, 2)}
+                        {JSON.stringify(decodedData.parameters, null, 2)}
                       </pre>
                     </div>
                   )}

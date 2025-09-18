@@ -16,7 +16,7 @@ export default function Home() {
   const [inputData, setInputData] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
 
-  const handleParse = (data: string) => {
+  const handleParse = async (data: string) => {
     try {
       // First, try to parse as JSON (for backward compatibility)
       try {
@@ -28,7 +28,8 @@ export default function Home() {
           return;
         } else if (parsedData.data) {
           // If the JSON has a 'data' field that contains the multisend data
-          setTransactions(decodeTransactionData(parsedData.data));
+          const decoded = await decodeTransactionData(parsedData.data);
+          setTransactions(decoded);
           return;
         } else if (parsedData.transactions) {
           // If the JSON has a 'transactions' field
@@ -40,15 +41,19 @@ export default function Home() {
       }
       
       // Treat as raw transaction data (multisend or regular function call)
-      setTransactions(decodeTransactionData(data));
+      const decoded = await decodeTransactionData(data);
+      setTransactions(decoded);
     } catch (error) {
       console.error('Error parsing data:', error);
       setTransactions([]);
     }
   };
 
-  const handleImageProcessed = (data: any) => {
+  const handleImageProcessed = async (data: any) => {
     setIsLoading(false);
+    if (data && data._resetLoading) {
+      return;
+    }
     
     // If the data contains the 'data' field, use it
     if (data.data) {
@@ -56,12 +61,12 @@ export default function Home() {
       setInputData(data.data);
       
       // Parse the data
-      handleParse(data.data);
+      await handleParse(data.data);
     } else {
       // Otherwise, stringify the entire JSON and use it
       const jsonString = JSON.stringify(data, null, 2);
       setInputData(jsonString);
-      handleParse(jsonString);
+      await handleParse(jsonString);
     }
   };
 
