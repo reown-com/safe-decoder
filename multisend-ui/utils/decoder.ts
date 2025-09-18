@@ -11,7 +11,10 @@ export interface DecodedFunctionData {
 const openChainSignatureCache = new Map<string, Promise<string[]>>();
 const openChainResolvedCache = new Map<string, string[]>();
 
-function buildOpenChainProxyUrl(normalizedSelector: string): string {
+// Regex patterns compiled once for performance
+const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+
+function buildOpenChainApiPath(normalizedSelector: string): string {
   const encodedSelector = encodeURIComponent(normalizedSelector);
   if (typeof window !== 'undefined') {
     return `/api/openchain?function=${encodedSelector}`;
@@ -32,18 +35,13 @@ function buildOpenChainProxyUrl(normalizedSelector: string): string {
 async function fetchOpenChainFunctionSignatures(selector: string): Promise<string[]> {
   const normalized = selector.toLowerCase();
   if (openChainResolvedCache.has(normalized)) {
-    const cached = openChainResolvedCache.get(normalized);
-    if (cached !== undefined) {
-      return cached;
-    }
-    // Unexpected, but keep behavior predictable.
-    return [];
+    return openChainResolvedCache.get(normalized)!;
   }
 
   if (!openChainSignatureCache.has(normalized)) {
     const lookupPromise = (async () => {
       try {
-        const requestUrl = buildOpenChainProxyUrl(normalized);
+        const requestUrl = buildOpenChainApiPath(normalized);
         const response = await fetch(requestUrl, {
           headers: {
             accept: 'application/json'
@@ -114,7 +112,7 @@ function formatDecodedValue(value: unknown): string {
   }
   if (typeof value === 'string') {
     // Normalize address casing if it looks like an address
-    if (/^0x[a-fA-F0-9]{40}$/.test(value)) {
+    if (ADDRESS_PATTERN.test(value)) {
       return value.toLowerCase();
     }
     return value;

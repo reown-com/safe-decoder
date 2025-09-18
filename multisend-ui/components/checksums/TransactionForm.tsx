@@ -299,10 +299,10 @@ export default function TransactionForm({
 
   // Watch for changes to the data field
   React.useEffect(() => {
-    let cancelled = false;
+    const abortController = new AbortController();
 
     const applyDecodedState = async (rawData: string) => {
-      if (cancelled) return;
+      if (abortController.signal.aborted) return;
       setDecodedData(null);
       setDecodedTransactions(null);
 
@@ -314,13 +314,13 @@ export default function TransactionForm({
         const normalizedData = normalizeHexString(rawData);
         const topLevelDecoded = await tryDecodeFunctionData(normalizedData);
 
-        if (cancelled) return;
+        if (abortController.signal.aborted) return;
 
         if (topLevelDecoded && topLevelDecoded.name === 'multiSend(bytes)' && topLevelDecoded.params.transactions) {
           const innerTransactionsData = '0x' + topLevelDecoded.params.transactions;
           const decodedInnerTxs = decodeMultiSendTransactions(innerTransactionsData);
           const nested = await decodeTransactionsRecursively(decodedInnerTxs);
-          if (!cancelled) {
+          if (!abortController.signal.aborted) {
             setDecodedTransactions(nested);
             setDecodedData(topLevelDecoded);
           }
@@ -328,29 +328,29 @@ export default function TransactionForm({
         }
 
         const transactions = await decodeTransactionData(normalizedData);
-        if (cancelled) return;
+        if (abortController.signal.aborted) return;
 
         if (transactions.length > 1) {
           const nested = await decodeTransactionsRecursively(transactions);
-          if (!cancelled) {
+          if (!abortController.signal.aborted) {
             setDecodedTransactions(nested);
             setDecodedData(null);
           }
         } else if (transactions.length === 1) {
           const innerDecoded = await tryDecodeFunctionData(normalizeHexString(transactions[0].data));
-          if (!cancelled) {
+          if (!abortController.signal.aborted) {
             setDecodedData(innerDecoded);
             setDecodedTransactions(null);
           }
         } else {
           const fallbackDecoded = await tryDecodeFunctionData(normalizedData);
-          if (!cancelled) {
+          if (!abortController.signal.aborted) {
             setDecodedData(fallbackDecoded);
             setDecodedTransactions(null);
           }
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!abortController.signal.aborted) {
           console.error('Error decoding data in watcher (in form):', error);
           setDecodedData({ name: 'Error decoding data', params: {}, error: error instanceof Error ? error.message : String(error) });
           setDecodedTransactions(null);
@@ -368,7 +368,7 @@ export default function TransactionForm({
     void applyDecodedState(initialData as string);
 
     return () => {
-      cancelled = true;
+      abortController.abort();
       if (subscription && typeof subscription.unsubscribe === 'function') {
         subscription.unsubscribe();
       }

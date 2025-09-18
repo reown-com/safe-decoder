@@ -12,16 +12,14 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions }) => {
   useEffect(() => {
     let cancelled = false;
     async function decodeAll() {
-      try {
-        const results = await Promise.all(transactions.map(tx => tryDecodeFunctionData(tx.data)));
-        if (!cancelled) {
-          setDecodedFunctions(results);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to decode transaction functions:', error);
-          setDecodedFunctions(transactions.map(() => null));
-        }
+      const results = await Promise.allSettled(
+        transactions.map(tx => tryDecodeFunctionData(tx.data))
+      );
+      if (!cancelled) {
+        const decodedResults = results.map(result =>
+          result.status === 'fulfilled' ? result.value : null
+        );
+        setDecodedFunctions(decodedResults);
       }
     }
     decodeAll();
