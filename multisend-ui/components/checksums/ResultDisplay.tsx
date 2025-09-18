@@ -17,6 +17,8 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
     );
   }
 
+  const decodedData = result.transaction?.data_decoded;
+
   return (
     <div className="space-y-6">
       {/* Network Info */}
@@ -55,27 +57,27 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
                 {result.transaction.data}
               </div>
             </div>
-            {result.transaction.data_decoded && (
+            {decodedData && (
               <div className="grid grid-cols-1 gap-1">
                 <div className="text-gray-500">Data Decoded:</div>
                 <div className="font-mono">
-                  <div>Method: {result.transaction.data_decoded.method}</div>
-                  {result.transaction.data_decoded.signature && (
-                    <div className="text-xs text-gray-500">Signature: {result.transaction.data_decoded.signature}</div>
+                  <div>Method: {decodedData.method}</div>
+                  {decodedData.signature && (
+                    <div className="text-xs text-gray-500">Signature: {decodedData.signature}</div>
                   )}
-                  {result.transaction.data_decoded.source && (
-                    <div className="text-xs text-gray-500">Source: {result.transaction.data_decoded.source}</div>
+                  {decodedData.source && (
+                    <div className="text-xs text-gray-500">Source: {decodedData.source}</div>
                   )}
-                  {result.transaction.data_decoded.candidates && result.transaction.data_decoded.candidates.length > 1 && (
+                  {decodedData.candidates && decodedData.candidates.length > 1 && (
                     <div className="text-xs text-blue-600">
-                      Other matches: {result.transaction.data_decoded.candidates.filter(candidate => candidate !== result.transaction.data_decoded.method).join(', ')}
+                      Other matches: {decodedData.candidates.filter(candidate => candidate !== decodedData.method).join(', ')}
                     </div>
                   )}
-                  {result.transaction.data_decoded.parameters && result.transaction.data_decoded.parameters.length > 0 && (
+                  {decodedData.parameters && decodedData.parameters.length > 0 && (
                     <div className="mt-2">
                       <div className="text-gray-500">Parameters:</div>
                       <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
-                        {JSON.stringify(result.transaction.data_decoded.parameters, null, 2)}
+                        {JSON.stringify(decodedData.parameters, null, 2)}
                       </pre>
                     </div>
                   )}

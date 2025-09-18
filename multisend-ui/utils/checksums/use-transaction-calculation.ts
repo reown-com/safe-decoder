@@ -37,6 +37,10 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
   const [isApiFetching, setIsApiFetching] = useState(false);
   const latestFetchedTransaction = useRef<TransactionParams | null>(null);
 
+  type DataDecoded = NonNullable<CalculationResult['transaction']> extends { data_decoded?: infer D }
+    ? NonNullable<D>
+    : never;
+
   // --- Parameter Extraction Logic (Revised) ---
   const networkParam = searchParams.get("network");
   const addressParam = searchParams.get("address") || "";
@@ -160,20 +164,20 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
           refundReceiver: data.refundReceiver,
           nonce: data.nonce,
           version: data.version, 
-          dataDecoded: null // We don't have dataDecoded unless API was called before
+          dataDecoded: null as DataDecoded | null
       }; 
       console.log("Calculating hashes with:", paramsToUse);
 
       const normalizedData = normalizeHexString(paramsToUse.data || '0x');
-      let decodedSummary: CalculationResult['transaction']['data_decoded'] | null = null;
+      let decodedSummary: DataDecoded | null = null;
 
-      const fetchedTx = latestFetchedTransaction.current;
+      const fetchedTx = latestFetchedTransaction.current as (TransactionParams & { dataDecoded?: DataDecoded }) | null;
       if (
         fetchedTx &&
         normalizeHexString(fetchedTx.data || '0x') === normalizedData &&
         fetchedTx.dataDecoded
       ) {
-        decodedSummary = fetchedTx.dataDecoded as CalculationResult['transaction']['data_decoded'];
+        decodedSummary = fetchedTx.dataDecoded as DataDecoded;
       }
 
       if (!decodedSummary && normalizedData !== '0x') {
@@ -188,7 +192,7 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
             decodedSummary = {
               method: decoded.name,
               signature: decoded.candidates?.[0] || decoded.name,
-              source: decoded.source,
+              source: decoded.source as "manual" | "openchain" | undefined,
               candidates: decoded.candidates,
               parameters: mappedParams
             };
