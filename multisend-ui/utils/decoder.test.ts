@@ -3,7 +3,8 @@ import {
   decodeMultiSendTransactions, 
   tryDecodeFunctionData, 
   DecodedTransaction,
-  formatLargeNumber 
+  formatLargeNumber,
+  __testing__
 } from './decoder';
 
 describe('Decoder Utils', () => {
@@ -132,3 +133,47 @@ describe('Decoder Utils', () => {
   // Add more tests for other functions (decodeRegularFunctionCall, parseSignTypedDataJson, etc.) here
 
 }); 
+
+describe('OpenChain lookups', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    __testing__.clearOpenChainCaches();
+    global.fetch = jest.fn() as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    __testing__.clearOpenChainCaches();
+    global.fetch = originalFetch;
+  });
+
+  it('decodes unknown signatures using OpenChain results', async () => {
+    const minterAddress = '0x164be303480f542336be0bbe0432a13b85e6fd1b';
+    const iface = new ethers.utils.Interface(['function setMinter(address)']);
+    const data = iface.encodeFunctionData('setMinter', [minterAddress]);
+
+    const fetchMock = global.fetch as unknown as jest.Mock;
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        result: {
+          function: {
+            '0xFCA3B5AA': [
+              { signature: 'setMinter(address)' },
+              { text_signature: 'setMinter(address)' }
+            ]
+          }
+        }
+      })
+    });
+
+    const decoded = await tryDecodeFunctionData(data);
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/openchain?function=0xfca3b5aa'), expect.any(Object));
+    expect(decoded).not.toBeNull();
+    expect(decoded?.source).toBe('openchain');
+    expect(decoded?.name).toBe('setMinter(address)');
+    expect(decoded?.params.arg0).toBe(minterAddress.toLowerCase());
+  });
+});

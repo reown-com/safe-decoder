@@ -1,7 +1,5 @@
 import { ethers } from 'ethers';
 
-const OPENCHAIN_LOOKUP_URL = 'https://api.openchain.xyz/signature-database/v1/lookup';
-
 export interface DecodedFunctionData {
   name: string;
   params: Record<string, string>;
@@ -12,6 +10,24 @@ export interface DecodedFunctionData {
 
 const openChainSignatureCache = new Map<string, Promise<string[]>>();
 const openChainResolvedCache = new Map<string, string[]>();
+
+function buildOpenChainProxyUrl(normalizedSelector: string): string {
+  const encodedSelector = encodeURIComponent(normalizedSelector);
+  if (typeof window !== 'undefined') {
+    return `/api/openchain?function=${encodedSelector}`;
+  }
+
+  const baseUrl =
+    process.env.OPENCHAIN_PROXY_BASE_URL ||
+    process.env.NEXT_PUBLIC_OPENCHAIN_PROXY_BASE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    process.env.SITE_URL ||
+    'http://localhost:3000';
+
+  const trimmed = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  return `${trimmed}/api/openchain?function=${encodedSelector}`;
+}
 
 async function fetchOpenChainFunctionSignatures(selector: string): Promise<string[]> {
   const normalized = selector.toLowerCase();
@@ -27,21 +43,43 @@ async function fetchOpenChainFunctionSignatures(selector: string): Promise<strin
   if (!openChainSignatureCache.has(normalized)) {
     const lookupPromise = (async () => {
       try {
-        const url = new URL(OPENCHAIN_LOOKUP_URL);
-        url.searchParams.set('function', normalized);
-        const response = await fetch(url.toString());
+        const requestUrl = buildOpenChainProxyUrl(normalized);
+        const response = await fetch(requestUrl, {
+          headers: {
+            accept: 'application/json'
+          }
+        });
         if (!response.ok) {
           throw new Error(`OpenChain responded with status ${response.status}`);
         }
         const data = await response.json();
-        const entries = data?.result?.function?.[normalized] ?? [];
+        const functionResults = data?.result?.function;
+        let entries: unknown = [];
+        if (functionResults && typeof functionResults === 'object') {
+          const matchedKey = Object.keys(functionResults).find(key => key.toLowerCase() === normalized);
+          if (matchedKey) {
+            entries = (functionResults as Record<string, unknown>)[matchedKey];
+          }
+        }
         const signatures = Array.isArray(entries)
           ? entries
-              .map((entry: { name?: string | null }) => (typeof entry?.name === 'string' ? entry.name : null))
+              .map((entry: { name?: unknown; signature?: unknown; text_signature?: unknown }) => {
+                if (typeof entry?.name === 'string' && entry.name.trim().length > 0) {
+                  return entry.name;
+                }
+                if (typeof entry?.signature === 'string' && entry.signature.trim().length > 0) {
+                  return entry.signature;
+                }
+                if (typeof entry?.text_signature === 'string' && entry.text_signature.trim().length > 0) {
+                  return entry.text_signature;
+                }
+                return null;
+              })
               .filter((entry: string | null): entry is string => Boolean(entry))
           : [];
-        openChainResolvedCache.set(normalized, signatures);
-        return signatures;
+        const uniqueSignatures = Array.from(new Set(signatures));
+        openChainResolvedCache.set(normalized, uniqueSignatures);
+        return uniqueSignatures;
       } catch (error) {
         console.error('Failed to fetch OpenChain signatures:', error);
         openChainResolvedCache.set(normalized, []);
@@ -828,3 +866,10 @@ export function normalizeHexString(hexString: string): string {
   // Add the 0x prefix back
   return `0x${normalized}`;
 } 
+
+export const __testing__ = {
+  clearOpenChainCaches(): void {
+    openChainSignatureCache.clear();
+    openChainResolvedCache.clear();
+  }
+};

@@ -59,7 +59,18 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
               <div className="grid grid-cols-1 gap-1">
                 <div className="text-gray-500">Data Decoded:</div>
                 <div className="font-mono">
-                  Method: {result.transaction.data_decoded.method}
+                  <div>Method: {result.transaction.data_decoded.method}</div>
+                  {result.transaction.data_decoded.signature && (
+                    <div className="text-xs text-gray-500">Signature: {result.transaction.data_decoded.signature}</div>
+                  )}
+                  {result.transaction.data_decoded.source && (
+                    <div className="text-xs text-gray-500">Source: {result.transaction.data_decoded.source}</div>
+                  )}
+                  {result.transaction.data_decoded.candidates && result.transaction.data_decoded.candidates.length > 1 && (
+                    <div className="text-xs text-blue-600">
+                      Other matches: {result.transaction.data_decoded.candidates.filter(candidate => candidate !== result.transaction.data_decoded.method).join(', ')}
+                    </div>
+                  )}
                   {result.transaction.data_decoded.parameters && result.transaction.data_decoded.parameters.length > 0 && (
                     <div className="mt-2">
                       <div className="text-gray-500">Parameters:</div>

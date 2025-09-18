@@ -5,6 +5,7 @@ import { NETWORKS } from "./constants";
 import { calculateHashes } from "./safeHashesCalculator";
 import { fetchTransactionDataFromApi } from "./api";
 import { FormData, CalculationResult, TransactionParams } from "@/types/checksums";
+import { tryDecodeFunctionData, normalizeHexString } from "@/utils/decoder";
 import { parseSafeAddressInput } from "./safeAddressParser";
 
 // Helper function to find network configuration based on various inputs
@@ -34,6 +35,7 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
   const [calculationRequested, setCalculationRequested] = useState(false);
   const initialParamsLoaded = useRef(false); 
   const [isApiFetching, setIsApiFetching] = useState(false);
+  const latestFetchedTransaction = useRef<TransactionParams | null>(null);
 
   // --- Parameter Extraction Logic (Revised) ---
   const networkParam = searchParams.get("network");
@@ -111,6 +113,7 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
         data.nonce
       );
       console.log("Fetched txParams:", txParams);
+      latestFetchedTransaction.current = txParams;
       // Update form fields after fetch
       form.setValue("to", txParams.to);
       form.setValue("value", txParams.value);
@@ -129,6 +132,7 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
       console.error("API Fetch Error:", error);
       apiError = error.message || "Failed to fetch data from Safe Service.";
       if (apiError) form.setError("apiError", { type: "manual", message: apiError });
+      latestFetchedTransaction.current = null;
     } finally {
       setIsApiFetching(false);
     }
@@ -159,6 +163,44 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
           dataDecoded: null // We don't have dataDecoded unless API was called before
       }; 
       console.log("Calculating hashes with:", paramsToUse);
+
+      const normalizedData = normalizeHexString(paramsToUse.data || '0x');
+      let decodedSummary: CalculationResult['transaction']['data_decoded'] | null = null;
+
+      const fetchedTx = latestFetchedTransaction.current;
+      if (
+        fetchedTx &&
+        normalizeHexString(fetchedTx.data || '0x') === normalizedData &&
+        fetchedTx.dataDecoded
+      ) {
+        decodedSummary = fetchedTx.dataDecoded as CalculationResult['transaction']['data_decoded'];
+      }
+
+      if (!decodedSummary && normalizedData !== '0x') {
+        try {
+          const decoded = await tryDecodeFunctionData(normalizedData);
+          if (decoded) {
+            const mappedParams = Object.entries(decoded.params).map(([name, value]) => ({
+              name,
+              value,
+              type: typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value) ? 'address' : undefined
+            }));
+            decodedSummary = {
+              method: decoded.name,
+              signature: decoded.candidates?.[0] || decoded.name,
+              source: decoded.source,
+              candidates: decoded.candidates,
+              parameters: mappedParams
+            };
+          }
+        } catch (error) {
+          console.error('Failed to decode data during hash calculation:', error);
+        }
+      }
+
+      if (decodedSummary) {
+        paramsToUse.dataDecoded = decodedSummary;
+      }
       const { domainHash, messageHash, safeTxHash, encodedMessage } = await calculateHashes(
         data.chainId.toString(),
         data.address,
