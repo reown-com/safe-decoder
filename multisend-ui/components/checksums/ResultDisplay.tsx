@@ -2,14 +2,14 @@
 
 import React, { useMemo } from 'react';
 import { CalculationResult } from '@/types/checksums';
-import { decodeMultiSendTransactions, tryDecodeFunctionData } from '@/utils/decoder';
+import { decodeMultiSendTransactions, tryDecodeFunctionData, DecodedFunctionData } from '@/utils/decoder';
 
 interface ResultDisplayProps {
   result: CalculationResult;
 }
 
 export default function ResultDisplay({ result }: ResultDisplayProps) {
-  const [decodedFunctions, setDecodedFunctions] = React.useState<Array<any>>([]);
+  const [decodedFunctions, setDecodedFunctions] = React.useState<Array<DecodedFunctionData | null>>([]);
   if (result.error) {
     return (
       <div className="bg-red-50 text-red-700 p-4 rounded-md">
@@ -52,6 +52,9 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
       }).catch(error => {
         console.error('Failed to decode nested transaction functions:', error);
       });
+    } else {
+      // Clear decoded functions when no nested transactions
+      setDecodedFunctions([]);
     }
   }, [nestedTransactions]);
 
