@@ -310,13 +310,15 @@ describe('ResultDisplay', () => {
     });
 
     it('displays all 6 nested transactions from the real example', async () => {
+      const HEX_PARAM_LENGTH = 64; // Ethereum parameter padding length in hex characters
+
       // Create 6 mock transactions matching the real data
       const sixTransactions = Array.from({ length: 6 }, (_, i) => ({
         operation: 0,
         to: '0x398a2749487b2a91f2f543c01f7afd19aee4b6b0',
         value: '0',
         dataLength: 68,
-        data: `0x0d582f13${i.toString().padStart(64, '0')}${(i + 2).toString().padStart(64, '0')}`
+        data: `0x0d582f13${i.toString().padStart(HEX_PARAM_LENGTH, '0')}${(i + 2).toString().padStart(HEX_PARAM_LENGTH, '0')}`
       }));
 
       (decodeMultiSendTransactions as jest.Mock).mockReturnValue(sixTransactions);

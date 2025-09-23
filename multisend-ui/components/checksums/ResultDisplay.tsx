@@ -42,20 +42,36 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
 
   // Decode function data for each nested transaction
   React.useEffect(() => {
-    if (nestedTransactions && nestedTransactions.length > 0) {
-      Promise.all(
-        nestedTransactions.map(tx =>
-          tx.data && tx.data !== '0x' ? tryDecodeFunctionData(tx.data) : null
-        )
-      ).then(decoded => {
-        setDecodedFunctions(decoded);
-      }).catch(error => {
-        console.error('Failed to decode nested transaction functions:', error);
-      });
-    } else {
-      // Clear decoded functions when no nested transactions
-      setDecodedFunctions([]);
-    }
+    const abortController = new AbortController();
+
+    const decodeTransactions = async () => {
+      if (nestedTransactions && nestedTransactions.length > 0) {
+        try {
+          const decoded = await Promise.all(
+            nestedTransactions.map(tx =>
+              tx.data && tx.data !== '0x' ? tryDecodeFunctionData(tx.data) : null
+            )
+          );
+
+          if (!abortController.signal.aborted) {
+            setDecodedFunctions(decoded);
+          }
+        } catch (error) {
+          if (!abortController.signal.aborted) {
+            console.error('Failed to decode nested transaction functions:', error);
+          }
+        }
+      } else {
+        // Clear decoded functions when no nested transactions
+        setDecodedFunctions([]);
+      }
+    };
+
+    decodeTransactions();
+
+    return () => {
+      abortController.abort();
+    };
   }, [nestedTransactions]);
 
   return (
@@ -113,7 +129,14 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
                     </div>
                   )}
                   {/* Show nested transactions for multiSend instead of raw parameters */}
-                  {nestedTransactions && nestedTransactions.length > 0 ? (
+                  {(() => {
+                    const hasNestedTransactions = nestedTransactions && nestedTransactions.length > 0;
+                    const shouldShowParameters = decodedData.parameters &&
+                                                decodedData.parameters.length > 0 &&
+                                                decodedData.method !== 'multiSend(bytes)';
+
+                    if (hasNestedTransactions) {
+                      return (
                     <div className="mt-2">
                       <div className="text-gray-500">Nested Transactions ({nestedTransactions.length}):</div>
                       <div className="mt-2 space-y-2 max-h-96 overflow-y-auto">
@@ -152,14 +175,22 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
                         })}
                       </div>
                     </div>
-                  ) : decodedData.parameters && decodedData.parameters.length > 0 && decodedData.method !== 'multiSend(bytes)' && (
-                    <div className="mt-2">
-                      <div className="text-gray-500">Parameters:</div>
-                      <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
-                        {JSON.stringify(decodedData.parameters, null, 2)}
-                      </pre>
-                    </div>
-                  )}
+                      );
+                    }
+
+                    if (shouldShowParameters) {
+                      return (
+                        <div className="mt-2">
+                          <div className="text-gray-500">Parameters:</div>
+                          <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
+                            {JSON.stringify(decodedData.parameters, null, 2)}
+                          </pre>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
                 </div>
               </div>
             )}
