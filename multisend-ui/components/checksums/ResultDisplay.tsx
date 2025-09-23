@@ -1,13 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { CalculationResult } from '@/types/checksums';
+import { decodeMultiSendTransactions, tryDecodeFunctionData, DecodedFunctionData } from '@/utils/decoder';
 
 interface ResultDisplayProps {
   result: CalculationResult;
 }
 
 export default function ResultDisplay({ result }: ResultDisplayProps) {
+  const [decodedFunctions, setDecodedFunctions] = React.useState<Array<DecodedFunctionData | null>>([]);
   if (result.error) {
     return (
       <div className="bg-red-50 text-red-700 p-4 rounded-md">
@@ -18,6 +20,59 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
   }
 
   const decodedData = result.transaction?.data_decoded;
+
+  // Decode nested multiSend transactions if present
+  const nestedTransactions = useMemo(() => {
+    if (
+      decodedData?.method === 'multiSend(bytes)' &&
+      decodedData?.parameters?.find(p => p.name === 'transactions')
+    ) {
+      try {
+        const transactionsParam = decodedData.parameters.find(p => p.name === 'transactions');
+        if (transactionsParam) {
+          const innerData = '0x' + transactionsParam.value;
+          return decodeMultiSendTransactions(innerData);
+        }
+      } catch (error) {
+        console.error('Failed to decode nested multiSend transactions:', error);
+      }
+    }
+    return null;
+  }, [decodedData]);
+
+  // Decode function data for each nested transaction
+  React.useEffect(() => {
+    const abortController = new AbortController();
+
+    const decodeTransactions = async () => {
+      if (nestedTransactions && nestedTransactions.length > 0) {
+        try {
+          const decoded = await Promise.all(
+            nestedTransactions.map(tx =>
+              tx.data && tx.data !== '0x' ? tryDecodeFunctionData(tx.data) : null
+            )
+          );
+
+          if (!abortController.signal.aborted) {
+            setDecodedFunctions(decoded);
+          }
+        } catch (error) {
+          if (!abortController.signal.aborted) {
+            console.error('Failed to decode nested transaction functions:', error);
+          }
+        }
+      } else {
+        // Clear decoded functions when no nested transactions
+        setDecodedFunctions([]);
+      }
+    };
+
+    decodeTransactions();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [nestedTransactions]);
 
   return (
     <div className="space-y-6">
@@ -73,14 +128,69 @@ export default function ResultDisplay({ result }: ResultDisplayProps) {
                       Other matches: {decodedData.candidates.filter(candidate => candidate !== decodedData.method).join(', ')}
                     </div>
                   )}
-                  {decodedData.parameters && decodedData.parameters.length > 0 && (
+                  {/* Show nested transactions for multiSend instead of raw parameters */}
+                  {(() => {
+                    const hasNestedTransactions = nestedTransactions && nestedTransactions.length > 0;
+                    const shouldShowParameters = decodedData.parameters &&
+                                                decodedData.parameters.length > 0 &&
+                                                decodedData.method !== 'multiSend(bytes)';
+
+                    if (hasNestedTransactions) {
+                      return (
                     <div className="mt-2">
-                      <div className="text-gray-500">Parameters:</div>
-                      <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
-                        {JSON.stringify(decodedData.parameters, null, 2)}
-                      </pre>
+                      <div className="text-gray-500">Nested Transactions ({nestedTransactions.length}):</div>
+                      <div className="mt-2 space-y-2 max-h-96 overflow-y-auto">
+                        {nestedTransactions.map((tx, index) => {
+                          const decodedFunc = decodedFunctions[index];
+                          return (
+                            <div key={index} className="bg-gray-100 p-2 rounded text-xs">
+                              <div className="font-semibold">Transaction #{index + 1}</div>
+                              <div>Operation: {tx.operation === 0 ? 'Call' : 'DelegateCall'}</div>
+                              <div>To: {tx.to}</div>
+                              <div>Value: {tx.value}</div>
+                              {decodedFunc ? (
+                                <div className="mt-1">
+                                  <div className="text-blue-600">Function: {decodedFunc.name}</div>
+                                  {decodedFunc.params && Object.keys(decodedFunc.params).length > 0 && (
+                                    <div className="ml-2 mt-1">
+                                      {Object.entries(decodedFunc.params).map(([key, value]) => (
+                                        <div key={key} className="text-gray-600">
+                                          {key}: {String(value).length > 50
+                                            ? `${String(value).slice(0, 25)}...${String(value).slice(-10)}`
+                                            : String(value)}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div>
+                                  Data: {tx.data.length > 66
+                                    ? `${tx.data.slice(0, 30)}...${tx.data.slice(-20)}`
+                                    : tx.data}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  )}
+                      );
+                    }
+
+                    if (shouldShowParameters) {
+                      return (
+                        <div className="mt-2">
+                          <div className="text-gray-500">Parameters:</div>
+                          <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
+                            {JSON.stringify(decodedData.parameters, null, 2)}
+                          </pre>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
                 </div>
               </div>
             )}
