@@ -18,13 +18,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "ethers": "^5.7.2",
+    "ethers": "^5.8.0",
     "googleapis": "^148.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.19",
+    "@types/node": "^20.19.25",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.9.3"
   },
   "bin": {
     "decode-multisend": "./dist/decode.js"
